@@ -66,10 +66,32 @@ export default function App() {
   useEffect(() => {
     const initFirebase = async () => {
       try {
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        let firebaseConfig = {};
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
+        // Check if Firebase config is available from the environment.
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+          firebaseConfig = JSON.parse(__firebase_config);
+        } else {
+          // If not in this environment, try to get config from Vercel environment variables
+          const vercelConfig = {
+            apiKey: import.meta.env.VITE_API_KEY,
+            authDomain: import.meta.env.VITE_AUTH_DOMAIN,
+            projectId: import.meta.env.VITE_PROJECT_ID,
+            storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
+            messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
+            appId: import.meta.env.VITE_APP_ID,
+          };
+
+          // Check if Vercel config is complete
+          if (vercelConfig.apiKey && vercelConfig.projectId) {
+            firebaseConfig = vercelConfig;
+          } else {
+            throw new Error("Firebase configuration is missing. Please check your Vercel environment variables.");
+          }
+        }
+        
         const app = initializeApp(firebaseConfig);
         const firestoreDb = getFirestore(app);
         const firebaseAuth = getAuth(app);
@@ -105,7 +127,7 @@ export default function App() {
         }
       } catch (e) {
         console.error("Error initializing Firebase:", e);
-        setError("Failed to initialize the app. Please try again.");
+        setError(`Error: ${e.message}`);
         setLoading(false);
       }
     };
