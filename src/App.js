@@ -76,33 +76,22 @@ export default function App() {
     const initFirebase = async () => {
       updateDebug('init', 'Starting Firebase initialization...');
       try {
-        // Hardcoded Firebase configuration for guaranteed initialization
-        const hardcodedConfig = {
+        // ---
+        // INSTRUCTIONS FOR USER:
+        // Please replace the placeholder values below with the actual
+        // configuration object you copied from your Firebase Console.
+        // Make sure to keep the double quotes around keys and string values.
+        // ---
+        const firebaseConfig = {
           apiKey: "AIzaSyCJrxrdWCjPD9VGexVtJ9PNRgTjHVsK_yM",
           authDomain: "johari-window-web-app.firebaseapp.com",
           projectId: "johari-window-web-app",
           storageBucket: "johari-window-web-app.firebasestorage.app",
           messagingSenderId: "240594076283",
           appId: "1:240594076283:web:d2288446ae4e7b21de98de",
+          measurementId: "G-VG2TM7MFQE"
         };
         
-        let firebaseConfig = {};
-
-        // Check for the Canvas-provided config first, fallback to hardcoded if not found
-        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-          try {
-            firebaseConfig = JSON.parse(__firebase_config);
-            updateDebug('config', 'Using Canvas-provided Firebase config.');
-          } catch (e) {
-            console.error("Failed to parse Firebase config from global variable, falling back to hardcoded config.");
-            firebaseConfig = hardcodedConfig;
-            updateDebug('config', 'Failed to parse global config, using hardcoded fallback.');
-          }
-        } else {
-            firebaseConfig = hardcodedConfig;
-            updateDebug('config', 'Global config not found, using hardcoded fallback.');
-        }
-
         const app = initializeApp(firebaseConfig);
         const firestoreDb = getFirestore(app);
         const firebaseAuth = getAuth(app);
@@ -160,7 +149,7 @@ export default function App() {
       setShareLink(`${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`);
       updateDebug('share_link_set', shareLink);
 
-      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; // This value can stay as-is for now
       const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
       updateDebug('firestore_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}`);
 
@@ -216,7 +205,7 @@ export default function App() {
     setLoading(true);
     try {
       const newWindowId = generateUniqueId();
-      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; // This value can stay as-is for now
       const userDocRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, newWindowId);
 
       await setDoc(userDocRef, {
@@ -254,7 +243,7 @@ export default function App() {
     if (!db || !windowId || !userId || !creatorId) return;
     setLoading(true);
     try {
-      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; // This value can stay as-is for now
       if (isSelfAssessment) {
         const userDocRef = doc(db, `/artifacts/${appId}/users/${creatorId}/windows`, windowId);
         await updateDoc(userDocRef, {
