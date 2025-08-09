@@ -70,11 +70,11 @@ export default function App() {
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        // Check if Firebase config is available from the environment.
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+          // Use config from the Canvas environment
           firebaseConfig = JSON.parse(__firebase_config);
         } else {
-          // If not in this environment, try to get config from Vercel environment variables
+          // Use config from Vercel environment variables
           const vercelConfig = {
             apiKey: process.env.REACT_APP_API_KEY,
             authDomain: process.env.REACT_APP_AUTH_DOMAIN,
@@ -83,15 +83,13 @@ export default function App() {
             messagingSenderId: process.env.REACT_APP_MESSAGING_SENDER_ID,
             appId: process.env.REACT_APP_APP_ID,
           };
-
-          // Check if Vercel config is complete
-          if (vercelConfig.apiKey && vercelConfig.projectId) {
-            firebaseConfig = vercelConfig;
-          } else {
-            throw new Error("Firebase configuration is missing. Please check your Vercel environment variables.");
+          
+          if (!vercelConfig.apiKey || !vercelConfig.projectId) {
+            throw new Error("Firebase environment variables are not correctly set. Please check your Vercel project settings for variables with the `REACT_APP_` prefix.");
           }
+          firebaseConfig = vercelConfig;
         }
-        
+
         const app = initializeApp(firebaseConfig);
         const firestoreDb = getFirestore(app);
         const firebaseAuth = getAuth(app);
@@ -107,7 +105,6 @@ export default function App() {
             console.log("No user found. Signing in anonymously...");
             await signInAnonymously(firebaseAuth);
           }
-          setLoading(false);
         });
 
         // Handle initial URL parameters
@@ -128,6 +125,8 @@ export default function App() {
       } catch (e) {
         console.error("Error initializing Firebase:", e);
         setError(`Error: ${e.message}`);
+      } finally {
+        // Ensure loading state is always cleared
         setLoading(false);
       }
     };
