@@ -76,15 +76,8 @@ export default function App() {
     const initFirebase = async () => {
       updateDebug('init', 'Starting Firebase initialization...');
       try {
-        const firebaseConfig = {
-          apiKey: "AIzaSyCJrxrdWCjPD9VGexVtJ9PNRgTjHVsK_yM",
-          authDomain: "johari-window-web-app.firebaseapp.com",
-          projectId: "johari-window-web-app",
-          storageBucket: "johari-window-web-app.firebasestorage.app",
-          messagingSenderId: "240594076283",
-          appId: "1:240594076283:web:d2288446ae4e7b21de98de",
-          measurementId: "G-VG2TM7MFQE"
-        };
+        // Use the secure, provided Firebase config instead of a hardcoded one.
+        const firebaseConfig = JSON.parse(__firebase_config);
         
         const app = initializeApp(firebaseConfig);
         const firestoreDb = getFirestore(app);
@@ -138,7 +131,10 @@ export default function App() {
       setCreatorId(creatorIdFromUrl);
       const mode = urlParams.get('mode');
       
-      // FIX: Separate the logic based on the mode.
+      // Use the provided app ID from the environment.
+      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+      // Separate the logic based on the mode.
       if (mode === 'feedback') {
         // If it's a feedback link, set the page to 'assess' and stop loading.
         updateDebug('mode_check', 'Mode is "feedback". Setting page to "assess".');
@@ -158,8 +154,7 @@ export default function App() {
         const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
         setShareLink(newShareLink);
         updateDebug('share_link_set', newShareLink);
-
-        const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; 
+ 
         const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
         updateDebug('firestore_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}`);
 
@@ -218,7 +213,8 @@ export default function App() {
     setLoading(true);
     try {
       const newWindowId = generateUniqueId();
-      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; 
+      // Use the provided app ID from the environment.
+      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       const userDocRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, newWindowId);
 
       await setDoc(userDocRef, {
@@ -259,7 +255,8 @@ export default function App() {
     if (!db || !windowId || !userId || !creatorId) return;
     setLoading(true);
     try {
-      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; 
+      // Use the provided app ID from the environment.
+      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       if (isSelfAssessment) {
         const userDocRef = doc(db, `/artifacts/${appId}/users/${creatorId}/windows`, windowId);
         await updateDoc(userDocRef, {
