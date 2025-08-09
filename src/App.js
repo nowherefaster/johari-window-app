@@ -1,6 +1,6 @@
 import React, { useState, useEffect, createContext } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc } from 'firebase/firestore';
 
 // Define the Firebase context to pass services to components
@@ -104,13 +104,18 @@ export default function App() {
         setAuth(firebaseAuth);
         updateDebug('firebase_ready', 'Firebase services initialized.');
 
-        const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          updateDebug('auth_state', 'Signing in with custom token...');
+          await signInWithCustomToken(firebaseAuth, __initial_auth_token);
+        } else {
+          updateDebug('auth_state', 'No custom token found. Signing in anonymously...');
+          await signInAnonymously(firebaseAuth);
+        }
+
+        const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
           if (user) {
             setUserId(user.uid);
-            updateDebug('auth_state', `User authenticated with UID: ${user.uid}`);
-          } else {
-            updateDebug('auth_state', 'No user found. Signing in anonymously...');
-            await signInAnonymously(firebaseAuth);
+            updateDebug('auth_state_final', `User authenticated with UID: ${user.uid}`);
           }
         });
 
@@ -132,7 +137,7 @@ export default function App() {
       updateDebug('phase2_status', 'Waiting for DB and userId to be available...');
       return;
     }
-    updateDebug('phase2_status', 'DB and userId are ready. Checking URL...');
+    updateDebug('phase2_status', `DB and userId (${userId}) are ready. Checking URL...`);
 
     const urlParams = new URLSearchParams(window.location.search);
     const id = urlParams.get('id');
