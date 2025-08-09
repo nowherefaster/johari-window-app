@@ -137,57 +137,72 @@ export default function App() {
       setWindowId(id);
       setCreatorId(creatorIdFromUrl);
       const mode = urlParams.get('mode');
-      setIsSelfAssessment(mode !== 'feedback');
       
-      const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
-      setShareLink(newShareLink);
-      updateDebug('share_link_set', newShareLink);
+      // FIX: Separate the logic based on the mode.
+      if (mode === 'feedback') {
+        // If it's a feedback link, set the page to 'assess' and stop loading.
+        updateDebug('mode_check', 'Mode is "feedback". Setting page to "assess".');
+        setIsSelfAssessment(false);
+        setPage('assess');
+        setLoading(false);
+        
+        const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
+        setShareLink(newShareLink);
+        updateDebug('share_link_set', newShareLink);
 
-      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; 
-      const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
-      updateDebug('firestore_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}`);
+      } else {
+        // If it's the creator's link or an unknown mode, set up listeners for results.
+        updateDebug('mode_check', 'Mode is not "feedback". Setting up results listeners.');
+        setIsSelfAssessment(true);
+        
+        const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
+        setShareLink(newShareLink);
+        updateDebug('share_link_set', newShareLink);
 
-      const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
-        updateDebug('onSnapshot_window', 'onSnapshot callback fired for window.');
-        if (docSnap.exists()) {
-          updateDebug('doc_exists', 'Firestore document exists. Fetching data...');
-          const data = docSnap.data();
-          const userSelections = data.selfAssessment || [];
+        const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; 
+        const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
+        updateDebug('firestore_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}`);
 
-          // FIX: Move the loading state and page change here, so it executes
-          // as soon as the main window data is confirmed to exist.
-          setPage('results');
-          setLoading(false);
-
-          const feedbackRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
-          updateDebug('feedback_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
-          
-          const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
-            updateDebug('onSnapshot_feedback', 'Feedback onSnapshot callback fired.');
-            const peerSelections = new Set();
-            querySnap.forEach(doc => {
-              doc.data().adjectives.forEach(adj => peerSelections.add(adj));
-            });
-            updateDebug('peer_selections_count', peerSelections.size);
-
-            const arena = userSelections.filter(adj => peerSelections.has(adj));
-            const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
-            const facade = userSelections.filter(adj => !peerSelections.has(adj));
-            const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
-
-            setResults({ arena, blindSpot, facade, unknown });
-            updateDebug('results_calculated', 'Johari Window results calculated.');
-          });
-          
-          return () => unsubscribeFeedback();
-        } else {
-            const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
-            setError(errorMessage);
-            updateDebug('doc_exists', errorMessage);
+        const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
+          updateDebug('onSnapshot_window', 'onSnapshot callback fired for window.');
+          if (docSnap.exists()) {
+            updateDebug('doc_exists', 'Firestore document exists. Fetching data...');
+            const data = docSnap.data();
+            const userSelections = data.selfAssessment || [];
+            
+            setPage('results');
             setLoading(false);
-        }
-      });
-      return () => unsubscribeWindow();
+
+            const feedbackRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
+            updateDebug('feedback_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
+            
+            const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
+              updateDebug('onSnapshot_feedback', 'Feedback onSnapshot callback fired.');
+              const peerSelections = new Set();
+              querySnap.forEach(doc => {
+                doc.data().adjectives.forEach(adj => peerSelections.add(adj));
+              });
+              updateDebug('peer_selections_count', peerSelections.size);
+
+              const arena = userSelections.filter(adj => peerSelections.has(adj));
+              const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
+              const facade = userSelections.filter(adj => !peerSelections.has(adj));
+              const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
+
+              setResults({ arena, blindSpot, facade, unknown });
+              updateDebug('results_calculated', 'Johari Window results calculated.');
+            });
+            
+            return () => unsubscribeFeedback();
+          } else {
+              const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
+              setError(errorMessage);
+              updateDebug('doc_exists', errorMessage);
+              setLoading(false);
+          }
+        });
+        return () => unsubscribeWindow();
+      }
     } else {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
       setLoading(false);
