@@ -77,9 +77,9 @@ export default function App() {
       updateDebug('init', 'Starting Firebase initialization...');
       try {
         let firebaseConfig;
-        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+        try {
           firebaseConfig = JSON.parse(__firebase_config);
-        } else {
+        } catch (e) {
           throw new Error("Firebase configuration is not available.");
         }
         
@@ -89,10 +89,18 @@ export default function App() {
         setDb(firestoreDb);
         setAuth(firebaseAuth);
         updateDebug('firebase_ready', 'Firebase services initialized.');
+        
+        let initialAuthToken;
+        try {
+          initialAuthToken = __initial_auth_token;
+        } catch (e) {
+          initialAuthToken = null;
+          updateDebug('auth_token_error', 'Initial auth token is not available. Proceeding without it.');
+        }
 
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        if (initialAuthToken) {
           updateDebug('auth_state', 'Signing in with custom token...');
-          await signInWithCustomToken(firebaseAuth, __initial_auth_token);
+          await signInWithCustomToken(firebaseAuth, initialAuthToken);
         } else {
           updateDebug('auth_state', 'No custom token found. Signing in anonymously...');
           await signInAnonymously(firebaseAuth);
@@ -136,10 +144,11 @@ export default function App() {
       const mode = urlParams.get('mode');
       
       let appId;
-      if (typeof __app_id !== 'undefined') {
-        appId = __app_id;
-      } else {
-        appId = 'default-app-id'; // Fallback for environments without __app_id
+      try {
+        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      } catch(e) {
+        appId = 'default-app-id';
+        updateDebug('app_id_error', 'App ID is not available. Using default.');
       }
 
       // Separate the logic based on the mode.
@@ -222,7 +231,13 @@ export default function App() {
     try {
       const newWindowId = generateUniqueId();
       // Use the provided app ID from the environment.
-      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      let appId;
+      try {
+        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      } catch(e) {
+        appId = 'default-app-id';
+        updateDebug('app_id_error', 'App ID is not available. Using default.');
+      }
       const userDocRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, newWindowId);
 
       await setDoc(userDocRef, {
@@ -264,7 +279,13 @@ export default function App() {
     setLoading(true);
     try {
       // Use the provided app ID from the environment.
-      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      let appId;
+      try {
+        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      } catch(e) {
+        appId = 'default-app-id';
+        updateDebug('app_id_error', 'App ID is not available. Using default.');
+      }
       if (isSelfAssessment) {
         const userDocRef = doc(db, `/artifacts/${appId}/users/${creatorId}/windows`, windowId);
         await updateDoc(userDocRef, {
