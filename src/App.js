@@ -53,6 +53,7 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
+  const [creatorId, setCreatorId] = useState(null); // New state to store the creator's ID
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [windowId, setWindowId] = useState(null);
@@ -71,7 +72,6 @@ export default function App() {
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
           firebaseConfig = JSON.parse(__firebase_config);
         } else {
-          // This block is a fallback for local testing without Canvas globals
           const vercelConfig = {
             apiKey: process.env.REACT_APP_API_KEY,
             authDomain: process.env.REACT_APP_AUTH_DOMAIN,
@@ -121,23 +121,25 @@ export default function App() {
 
     const urlParams = new URLSearchParams(window.location.search);
     const id = urlParams.get('id');
+    const creatorIdFromUrl = urlParams.get('creatorId');
 
-    if (id) {
+    if (id && creatorIdFromUrl) {
       setWindowId(id);
+      setCreatorId(creatorIdFromUrl);
       const mode = urlParams.get('mode');
       setIsSelfAssessment(mode !== 'feedback');
       setPage('assess');
-      setShareLink(`${window.location.origin}${window.location.pathname}?id=${id}`);
+      setShareLink(`${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`);
 
       const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-      const windowRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, id);
+      const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
       
       const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const userSelections = data.selfAssessment || [];
 
-          const feedbackRef = collection(db, `/artifacts/${appId}/users/${userId}/windows/${id}/feedback`);
+          const feedbackRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
           const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
             const peerSelections = new Set();
             querySnap.forEach(doc => {
@@ -151,12 +153,18 @@ export default function App() {
             const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
 
             setResults({ arena, blindSpot, facade, unknown });
+            // Only set loading to false once all data is fetched and processed
+            setLoading(false);
           });
           
           return () => unsubscribeFeedback();
+        } else {
+            // Document doesn't exist, so we can't load the window.
+            setError("This Johari Window does not exist or you don't have access to it.");
+            setLoading(false);
         }
       });
-      setLoading(false);
+      // The loading state is now only set to false inside the onSnapshot listener, once data is confirmed.
       return () => unsubscribeWindow();
     } else {
       setLoading(false);
@@ -183,8 +191,9 @@ export default function App() {
 
       setWindowId(newWindowId);
       setIsSelfAssessment(true);
+      setCreatorId(userId);
       setPage('assess');
-      setShareLink(`${window.location.origin}${window.location.pathname}?id=${newWindowId}&mode=feedback`);
+      setShareLink(`${window.location.origin}${window.location.pathname}?id=${newWindowId}&mode=feedback&creatorId=${userId}`);
     } catch (e) {
       console.error("Error starting new window:", e);
       setError("Failed to start a new window. Please try again.");
@@ -204,20 +213,20 @@ export default function App() {
   };
 
   const handleSaveAssessment = async () => {
-    if (!db || !windowId || !userId) return;
+    if (!db || !windowId || !userId || !creatorId) return;
     setLoading(true);
     try {
       const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       if (isSelfAssessment) {
-        const userDocRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, windowId);
+        const userDocRef = doc(db, `/artifacts/${appId}/users/${creatorId}/windows`, windowId);
         await updateDoc(userDocRef, {
           selfAssessment: selectedAdjectives,
         });
       } else {
-        const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/windows/${windowId}/feedback`);
+        const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
         await addDoc(feedbackCollectionRef, {
           adjectives: selectedAdjectives,
-          submittedBy: 'anonymous',
+          submittedBy: userId,
           submittedAt: new Date(),
         });
       }
@@ -287,7 +296,7 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <button className={tailwindClasses.button} onClick={handleSaveAssessment} disabled={loading}>
+            <button className={tailwindClasses.button} onClick={handleSaveAssessment} disabled={loading || selectedAdjectives.length === 0}>
               {isSelfAssessment ? "Submit My Selections" : "Submit Feedback"}
             </button>
           </>
@@ -305,6 +314,7 @@ export default function App() {
               <div className={tailwindClasses.link}>{shareLink}</div>
               <button className={tailwindClasses.copyButton} onClick={handleCopyLink}>Copy Link</button>
               <p>Your User ID for Firestore: {userId}</p>
+              <p>Creator's User ID: {creatorId}</p>
             </div>
             
             {results && (
@@ -336,7 +346,7 @@ export default function App() {
               </div>
             )}
             
-            <button className={`${tailwindClasses.button} mt-8`} onClick={() => setPage('start')}>
+            <button className={`${tailwindClasses.button} mt-8`} onClick={() => window.location.href = window.location.origin + window.location.pathname}>
               Create Another Window
             </button>
           </>
