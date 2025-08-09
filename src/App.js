@@ -154,6 +154,11 @@ export default function App() {
           const data = docSnap.data();
           const userSelections = data.selfAssessment || [];
 
+          // FIX: Move the loading state and page change here, so it executes
+          // as soon as the main window data is confirmed to exist.
+          setPage('results');
+          setLoading(false);
+
           const feedbackRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
           updateDebug('feedback_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
           
@@ -172,15 +177,8 @@ export default function App() {
 
             setResults({ arena, blindSpot, facade, unknown });
             updateDebug('results_calculated', 'Johari Window results calculated.');
-            
-            // FIX 2: Move the page and loading state change outside of the feedback listener.
-            // This ensures the page always renders after the initial window data is fetched,
-            // even if there's no feedback yet. The results will still update in real-time.
-            setPage('results');
-            setLoading(false);
           });
           
-          // FIX 3: Unsubscribe from both listeners when the component unmounts.
           return () => unsubscribeFeedback();
         } else {
             const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
@@ -189,7 +187,6 @@ export default function App() {
             setLoading(false);
         }
       });
-      // FIX 4: Unsubscribe from the main window listener as well.
       return () => unsubscribeWindow();
     } else {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
