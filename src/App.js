@@ -77,6 +77,10 @@ export default function App() {
       updateDebug('init', 'Starting Firebase initialization...');
       try {
         let firebaseConfig = {};
+        
+        // Log the raw value of the config variable for debugging
+        const rawConfig = typeof __firebase_config !== 'undefined' ? __firebase_config : 'undefined';
+        updateDebug('raw_config_value', rawConfig);
 
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
           try {
