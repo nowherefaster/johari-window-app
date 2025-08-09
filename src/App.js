@@ -77,11 +77,15 @@ export default function App() {
       updateDebug('init', 'Starting Firebase initialization...');
       try {
         let firebaseConfig;
+        let rawConfig = "";
         try {
-          firebaseConfig = JSON.parse(__firebase_config);
+          // Log the raw value before attempting to parse it
+          rawConfig = __firebase_config;
+          updateDebug('raw_firebase_config', rawConfig);
+          firebaseConfig = JSON.parse(rawConfig);
         } catch (e) {
           // A more descriptive error is thrown here if the variable is not available
-          throw new Error("Firebase configuration is not available. Please ensure the '__firebase_config' environment variable is set.");
+          throw new Error("Firebase configuration is not available. Please ensure the '__firebase_config' environment variable is set and is a valid JSON string.");
         }
         
         const app = initializeApp(firebaseConfig);
