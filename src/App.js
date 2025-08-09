@@ -76,7 +76,6 @@ export default function App() {
     const initFirebase = async () => {
       updateDebug('init', 'Starting Firebase initialization...');
       try {
-        // This is the user-provided Firebase configuration
         const firebaseConfig = {
           apiKey: "AIzaSyCJrxrdWCjPD9VGexVtJ9PNRgTjHVsK_yM",
           authDomain: "johari-window-web-app.firebaseapp.com",
@@ -112,7 +111,6 @@ export default function App() {
         return () => unsubscribe();
       } catch (e) {
         console.error("Error initializing Firebase:", e);
-        // Set the error state to be displayed on the main screen
         setError(`Error: ${e.message}`);
         updateDebug('error', `Initialization error: ${e.message}`);
         setLoading(false);
@@ -140,11 +138,13 @@ export default function App() {
       setCreatorId(creatorIdFromUrl);
       const mode = urlParams.get('mode');
       setIsSelfAssessment(mode !== 'feedback');
-      setPage('assess');
-      setShareLink(`${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`);
-      updateDebug('share_link_set', shareLink);
+      
+      // FIX 1: Correctly set the share link using a new variable, not the state variable.
+      const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
+      setShareLink(newShareLink);
+      updateDebug('share_link_set', newShareLink);
 
-      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; // This value can stay as-is for now
+      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; 
       const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
       updateDebug('firestore_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}`);
 
@@ -173,6 +173,11 @@ export default function App() {
 
             setResults({ arena, blindSpot, facade, unknown });
             updateDebug('results_calculated', 'Johari Window results calculated.');
+            
+            // FIX 2: Move the page and loading state change outside of the feedback listener.
+            // This ensures the page always renders after the initial window data is fetched,
+            // even if there's no feedback yet. The results will still update in real-time.
+            setPage('results');
             setLoading(false);
           });
           
@@ -200,7 +205,7 @@ export default function App() {
     setLoading(true);
     try {
       const newWindowId = generateUniqueId();
-      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; // This value can stay as-is for now
+      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; 
       const userDocRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, newWindowId);
 
       await setDoc(userDocRef, {
@@ -241,7 +246,7 @@ export default function App() {
     if (!db || !windowId || !userId || !creatorId) return;
     setLoading(true);
     try {
-      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; // This value can stay as-is for now
+      const appId = "1:240594076283:web:d2288446ae4e7b21de98de"; 
       if (isSelfAssessment) {
         const userDocRef = doc(db, `/artifacts/${appId}/users/${creatorId}/windows`, windowId);
         await updateDoc(userDocRef, {
@@ -286,7 +291,6 @@ export default function App() {
       return <p className={tailwindClasses.loading}>Loading...</p>;
     }
     
-    // Check for a specific error related to Firebase configuration
     if (error && error.includes("Firebase configuration is not available")) {
       return (
         <div className="text-center p-4">
