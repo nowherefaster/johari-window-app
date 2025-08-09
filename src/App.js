@@ -76,12 +76,7 @@ export default function App() {
     const initFirebase = async () => {
       updateDebug('init', 'Starting Firebase initialization...');
       try {
-        // ---
-        // INSTRUCTIONS FOR USER:
-        // Please replace the placeholder values below with the actual
-        // configuration object you copied from your Firebase Console.
-        // Make sure to keep the double quotes around keys and string values.
-        // ---
+        // This is the user-provided Firebase configuration
         const firebaseConfig = {
           apiKey: "AIzaSyCJrxrdWCjPD9VGexVtJ9PNRgTjHVsK_yM",
           authDomain: "johari-window-web-app.firebaseapp.com",
