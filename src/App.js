@@ -76,8 +76,12 @@ export default function App() {
     const initFirebase = async () => {
       updateDebug('init', 'Starting Firebase initialization...');
       try {
-        // Use the secure, provided Firebase config instead of a hardcoded one.
-        const firebaseConfig = JSON.parse(__firebase_config);
+        let firebaseConfig;
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+          firebaseConfig = JSON.parse(__firebase_config);
+        } else {
+          throw new Error("Firebase configuration is not available.");
+        }
         
         const app = initializeApp(firebaseConfig);
         const firestoreDb = getFirestore(app);
@@ -131,8 +135,12 @@ export default function App() {
       setCreatorId(creatorIdFromUrl);
       const mode = urlParams.get('mode');
       
-      // Use the provided app ID from the environment.
-      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      let appId;
+      if (typeof __app_id !== 'undefined') {
+        appId = __app_id;
+      } else {
+        appId = 'default-app-id'; // Fallback for environments without __app_id
+      }
 
       // Separate the logic based on the mode.
       if (mode === 'feedback') {
