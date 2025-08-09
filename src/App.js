@@ -80,7 +80,8 @@ export default function App() {
         try {
           firebaseConfig = JSON.parse(__firebase_config);
         } catch (e) {
-          throw new Error("Firebase configuration is not available.");
+          // A more descriptive error is thrown here if the variable is not available
+          throw new Error("Firebase configuration is not available. Please ensure the '__firebase_config' environment variable is set.");
         }
         
         const app = initializeApp(firebaseConfig);
@@ -330,13 +331,17 @@ export default function App() {
       return <p className={tailwindClasses.loading}>Loading...</p>;
     }
     
+    // Improved error message for missing Firebase config
     if (error && error.includes("Firebase configuration is not available")) {
       return (
         <div className="text-center p-4">
-          <h1 className="text-3xl font-bold text-red-600">Configuration Error</h1>
+          <h1 className="text-3xl font-bold text-red-600">⚠️ Configuration Error</h1>
           <p className="mt-4 text-lg text-red-500">
             The Firebase configuration is missing. This app cannot run without it.
             Please ensure the `__firebase_config` environment variable is set.
+          </p>
+          <p className="mt-2 text-sm text-gray-600">
+            It should be a JSON string that contains your project's `apiKey`, `projectId`, etc.
           </p>
           <div className={tailwindClasses.debugPanel}>
             <h3 className={tailwindClasses.debugTitle}>Current Debug Log</h3>
