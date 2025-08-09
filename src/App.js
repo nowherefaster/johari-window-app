@@ -53,7 +53,6 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [windowId, setWindowId] = useState(null);
@@ -63,17 +62,16 @@ export default function App() {
   const [page, setPage] = useState('start'); // 'start', 'assess', 'results'
   const [shareLink, setShareLink] = useState('');
 
-  // 1. Centralized Firebase Initialization, Auth, and URL handling
+  // PHASE 1: Initialize Firebase and handle authentication
   useEffect(() => {
-    const initApp = async () => {
+    const initFirebase = async () => {
       try {
         let firebaseConfig = {};
 
-        // Use global variables provided by the Canvas environment if available
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
           firebaseConfig = JSON.parse(__firebase_config);
         } else {
-          // Fallback to Vercel environment variables if global variables are not set
+          // This block is a fallback for local testing without Canvas globals
           const vercelConfig = {
             apiKey: process.env.REACT_APP_API_KEY,
             authDomain: process.env.REACT_APP_AUTH_DOMAIN,
@@ -82,9 +80,8 @@ export default function App() {
             messagingSenderId: process.env.REACT_APP_MESSAGING_SENDER_ID,
             appId: process.env.REACT_APP_APP_ID,
           };
-          
           if (!vercelConfig.apiKey || !vercelConfig.projectId) {
-            throw new Error("Firebase environment variables are not correctly set. Please check your Vercel project settings.");
+            throw new Error("Firebase environment variables are not correctly set.");
           }
           firebaseConfig = vercelConfig;
         }
@@ -92,25 +89,19 @@ export default function App() {
         const app = initializeApp(firebaseConfig);
         const firestoreDb = getFirestore(app);
         const firebaseAuth = getAuth(app);
-
         setDb(firestoreDb);
         setAuth(firebaseAuth);
 
-        const unsubscribeAuth = onAuthStateChanged(firebaseAuth, async (user) => {
+        const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
           if (user) {
             setUserId(user.uid);
           } else {
             console.log("No user found. Signing in anonymously...");
             await signInAnonymously(firebaseAuth);
           }
-          // Set auth ready state only after we have a user (or an anonymous user)
-          setIsAuthReady(true);
-          setLoading(false); // Stop loading once auth is ready
         });
 
-        // Clean up the auth listener when the component unmounts
-        return () => unsubscribeAuth();
-
+        return () => unsubscribe();
       } catch (e) {
         console.error("Error initializing Firebase:", e);
         setError(`Error: ${e.message}`);
@@ -118,40 +109,35 @@ export default function App() {
       }
     };
 
-    initApp();
+    initFirebase();
   }, []);
 
-  // 2. Data fetching and URL parameter handling (dependent on auth)
+  // PHASE 2: Handle URL parameters and set up listeners after auth is ready
   useEffect(() => {
-    if (!isAuthReady || !db || !userId) return;
-
-    // Handle initial URL parameters after auth is ready
-    const urlParams = new URLSearchParams(window.location.search);
-    const id = urlParams.get('id');
-    const mode = urlParams.get('mode');
-    
-    if (id) {
-      setWindowId(id);
-      setShareLink(`${window.location.origin}${window.location.pathname}?id=${id}`);
-      if (mode === 'feedback') {
-        setIsSelfAssessment(false);
-      } else {
-        setIsSelfAssessment(true);
-      }
-      setPage('assess');
+    if (!db || !userId) {
+      console.log("Waiting for DB and userId to be available...");
+      return;
     }
 
-    // Now set up the Firestore listener if a windowId exists
-    if (windowId && userId) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const id = urlParams.get('id');
+
+    if (id) {
+      setWindowId(id);
+      const mode = urlParams.get('mode');
+      setIsSelfAssessment(mode !== 'feedback');
+      setPage('assess');
+      setShareLink(`${window.location.origin}${window.location.pathname}?id=${id}`);
+
       const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-      const windowRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, windowId);
+      const windowRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, id);
       
       const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const userSelections = data.selfAssessment || [];
 
-          const feedbackRef = collection(db, `/artifacts/${appId}/users/${userId}/windows/${windowId}/feedback`);
+          const feedbackRef = collection(db, `/artifacts/${appId}/users/${userId}/windows/${id}/feedback`);
           const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
             const peerSelections = new Set();
             querySnap.forEach(doc => {
@@ -170,12 +156,15 @@ export default function App() {
           return () => unsubscribeFeedback();
         }
       });
+      setLoading(false);
       return () => unsubscribeWindow();
+    } else {
+      setLoading(false);
     }
-  }, [isAuthReady, db, userId, windowId]);
+  }, [db, userId]);
 
   const handleStartNewWindow = async () => {
-    if (!db || !userId || !isAuthReady) {
+    if (!db || !userId) {
         console.error("Attempted to start new window before Firebase and user are ready.");
         return;
     }
@@ -256,7 +245,7 @@ export default function App() {
   };
   
   const renderContent = () => {
-    if (loading || !isAuthReady) {
+    if (loading) {
       return <p className={tailwindClasses.loading}>Loading...</p>;
     }
     
@@ -270,7 +259,7 @@ export default function App() {
           <>
             <h1 className={tailwindClasses.heading}>Discover Your Johari Window</h1>
             <p className={tailwindClasses.subheading}>A simple tool to help you and your team better understand your interpersonal dynamics.</p>
-            <button className={tailwindClasses.button} onClick={handleStartNewWindow} disabled={loading || !isAuthReady}>
+            <button className={tailwindClasses.button} onClick={handleStartNewWindow} disabled={loading || !userId}>
               Start My Window
             </button>
           </>
