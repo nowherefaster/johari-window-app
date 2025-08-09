@@ -86,6 +86,7 @@ export default function App() {
             throw new Error(`Failed to parse Firebase config JSON: ${e.message}`);
           }
         } else {
+          // Display a clear error to the user if the config is not available.
           throw new Error("Firebase configuration is not available.");
         }
 
@@ -114,6 +115,7 @@ export default function App() {
         return () => unsubscribe();
       } catch (e) {
         console.error("Error initializing Firebase:", e);
+        // Set the error state to be displayed on the main screen
         setError(`Error: ${e.message}`);
         updateDebug('error', `Initialization error: ${e.message}`);
         setLoading(false);
@@ -284,6 +286,25 @@ export default function App() {
       return <p className={tailwindClasses.loading}>Loading...</p>;
     }
     
+    // Check for a specific error related to Firebase configuration
+    if (error && error.includes("Firebase configuration is not available")) {
+      return (
+        <div className="text-center p-4">
+          <h1 className="text-3xl font-bold text-red-600">Configuration Error</h1>
+          <p className="mt-4 text-lg text-red-500">
+            The Firebase configuration is missing. This app cannot run without it.
+            Please ensure the `__firebase_config` environment variable is set.
+          </p>
+          <div className={tailwindClasses.debugPanel}>
+            <h3 className={tailwindClasses.debugTitle}>Current Debug Log</h3>
+            <pre className={tailwindClasses.debugLog}>
+              {JSON.stringify(debugInfo, null, 2)}
+            </pre>
+          </div>
+        </div>
+      );
+    }
+
     if (error) {
       return <p className={tailwindClasses.error}>Error: {error}</p>;
     }
