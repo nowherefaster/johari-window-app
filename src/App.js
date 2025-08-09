@@ -31,6 +31,9 @@ const tailwindClasses = {
   link: "font-mono bg-gray-100 p-2 rounded-md break-all text-sm",
   copyButton: "bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition duration-150 ease-in-out",
   error: "text-red-500 font-medium",
+  debugPanel: "bg-gray-800 text-gray-200 p-4 rounded-lg mt-8 text-xs text-left w-full max-w-2xl",
+  debugTitle: "font-bold text-sm mb-2",
+  debugLog: "font-mono",
 };
 
 // A curated list of adjectives for a work-based Johari Window
@@ -53,25 +56,33 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
-  const [creatorId, setCreatorId] = useState(null); // New state to store the creator's ID
+  const [creatorId, setCreatorId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [windowId, setWindowId] = useState(null);
   const [isSelfAssessment, setIsSelfAssessment] = useState(false);
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
   const [results, setResults] = useState(null);
-  const [page, setPage] = useState('start'); // 'start', 'assess', 'results'
+  const [page, setPage] = useState('start');
   const [shareLink, setShareLink] = useState('');
+  const [debugInfo, setDebugInfo] = useState({});
+
+  const updateDebug = (key, value) => {
+    setDebugInfo(prev => ({ ...prev, [key]: value }));
+  };
 
   // PHASE 1: Initialize Firebase and handle authentication
   useEffect(() => {
     const initFirebase = async () => {
+      updateDebug('init', 'Starting Firebase initialization...');
       try {
         let firebaseConfig = {};
 
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
           firebaseConfig = JSON.parse(__firebase_config);
+          updateDebug('config', 'Using Canvas-provided Firebase config.');
         } else {
+          updateDebug('config', 'Using Vercel environment variables (fallback).');
           const vercelConfig = {
             apiKey: process.env.REACT_APP_API_KEY,
             authDomain: process.env.REACT_APP_AUTH_DOMAIN,
@@ -91,12 +102,14 @@ export default function App() {
         const firebaseAuth = getAuth(app);
         setDb(firestoreDb);
         setAuth(firebaseAuth);
+        updateDebug('firebase_ready', 'Firebase services initialized.');
 
         const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
           if (user) {
             setUserId(user.uid);
+            updateDebug('auth_state', `User authenticated with UID: ${user.uid}`);
           } else {
-            console.log("No user found. Signing in anonymously...");
+            updateDebug('auth_state', 'No user found. Signing in anonymously...');
             await signInAnonymously(firebaseAuth);
           }
         });
@@ -105,6 +118,7 @@ export default function App() {
       } catch (e) {
         console.error("Error initializing Firebase:", e);
         setError(`Error: ${e.message}`);
+        updateDebug('error', `Initialization error: ${e.message}`);
         setLoading(false);
       }
     };
@@ -115,65 +129,75 @@ export default function App() {
   // PHASE 2: Handle URL parameters and set up listeners after auth is ready
   useEffect(() => {
     if (!db || !userId) {
-      console.log("Waiting for DB and userId to be available...");
+      updateDebug('phase2_status', 'Waiting for DB and userId to be available...');
       return;
     }
+    updateDebug('phase2_status', 'DB and userId are ready. Checking URL...');
 
     const urlParams = new URLSearchParams(window.location.search);
     const id = urlParams.get('id');
     const creatorIdFromUrl = urlParams.get('creatorId');
 
     if (id && creatorIdFromUrl) {
+      updateDebug('url_params', `Found windowId: ${id}, creatorId: ${creatorIdFromUrl}`);
       setWindowId(id);
       setCreatorId(creatorIdFromUrl);
       const mode = urlParams.get('mode');
       setIsSelfAssessment(mode !== 'feedback');
       setPage('assess');
       setShareLink(`${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`);
+      updateDebug('share_link_set', shareLink);
 
       const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
-      
+      updateDebug('firestore_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}`);
+
       const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
+        updateDebug('onSnapshot', 'onSnapshot callback fired.');
         if (docSnap.exists()) {
+          updateDebug('doc_exists', 'Firestore document exists. Fetching data...');
           const data = docSnap.data();
           const userSelections = data.selfAssessment || [];
 
           const feedbackRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
+          updateDebug('feedback_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
+          
           const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
+            updateDebug('onSnapshot_feedback', 'Feedback onSnapshot callback fired.');
             const peerSelections = new Set();
             querySnap.forEach(doc => {
               doc.data().adjectives.forEach(adj => peerSelections.add(adj));
             });
+            updateDebug('peer_selections_count', peerSelections.size);
 
-            // Calculate Johari Window quadrants
             const arena = userSelections.filter(adj => peerSelections.has(adj));
             const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
             const facade = userSelections.filter(adj => !peerSelections.has(adj));
             const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
 
             setResults({ arena, blindSpot, facade, unknown });
-            // Only set loading to false once all data is fetched and processed
+            updateDebug('results_calculated', 'Johari Window results calculated.');
             setLoading(false);
           });
           
           return () => unsubscribeFeedback();
         } else {
-            // Document doesn't exist, so we can't load the window.
-            setError("This Johari Window does not exist or you don't have access to it.");
+            const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
+            setError(errorMessage);
+            updateDebug('doc_exists', errorMessage);
             setLoading(false);
         }
       });
-      // The loading state is now only set to false inside the onSnapshot listener, once data is confirmed.
       return () => unsubscribeWindow();
     } else {
+      updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
       setLoading(false);
     }
   }, [db, userId]);
 
   const handleStartNewWindow = async () => {
     if (!db || !userId) {
-        console.error("Attempted to start new window before Firebase and user are ready.");
+        updateDebug('start_new_error', "Attempted to start new window before Firebase and user are ready.");
         return;
     }
 
@@ -188,6 +212,7 @@ export default function App() {
         createdAt: new Date(),
         selfAssessment: [],
       });
+      updateDebug('new_window_created', `Successfully created new window with ID: ${newWindowId}`);
 
       setWindowId(newWindowId);
       setIsSelfAssessment(true);
@@ -197,6 +222,7 @@ export default function App() {
     } catch (e) {
       console.error("Error starting new window:", e);
       setError("Failed to start a new window. Please try again.");
+      updateDebug('start_new_error', `Failed to create new window: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -222,6 +248,7 @@ export default function App() {
         await updateDoc(userDocRef, {
           selfAssessment: selectedAdjectives,
         });
+        updateDebug('assessment_saved', 'Self-assessment saved.');
       } else {
         const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
         await addDoc(feedbackCollectionRef, {
@@ -229,11 +256,13 @@ export default function App() {
           submittedBy: userId,
           submittedAt: new Date(),
         });
+        updateDebug('assessment_saved', 'Feedback submitted.');
       }
       setPage('results');
     } catch (e) {
       console.error("Error saving assessment:", e);
       setError("Failed to save your selections. Please try again.");
+      updateDebug('save_error', `Failed to save assessment: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -361,6 +390,12 @@ export default function App() {
       <div className={tailwindClasses.container}>
         <div className={tailwindClasses.card}>
           {renderContent()}
+        </div>
+        <div className={tailwindClasses.debugPanel}>
+          <h3 className={tailwindClasses.debugTitle}>Debug Log</h3>
+          <pre className={tailwindClasses.debugLog}>
+            {JSON.stringify(debugInfo, null, 2)}
+          </pre>
         </div>
       </div>
     </FirebaseContext.Provider>
