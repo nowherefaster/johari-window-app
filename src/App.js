@@ -51,6 +51,7 @@ const generateUniqueId = () => {
 // Main App component
 export default function App() {
   const [db, setDb] = useState(null);
+  const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -62,9 +63,9 @@ export default function App() {
   const [page, setPage] = useState('start'); // 'start', 'assess', 'results'
   const [shareLink, setShareLink] = useState('');
 
-  // 1. Firebase Initialization and Authentication
+  // 1. Centralized Firebase Initialization, Auth, and URL handling
   useEffect(() => {
-    const initFirebase = async () => {
+    const initApp = async () => {
       try {
         let firebaseConfig = {};
 
@@ -93,8 +94,8 @@ export default function App() {
         const firebaseAuth = getAuth(app);
 
         setDb(firestoreDb);
+        setAuth(firebaseAuth);
 
-        // Listen for authentication state changes
         const unsubscribeAuth = onAuthStateChanged(firebaseAuth, async (user) => {
           if (user) {
             setUserId(user.uid);
@@ -102,25 +103,11 @@ export default function App() {
             console.log("No user found. Signing in anonymously...");
             await signInAnonymously(firebaseAuth);
           }
-          setIsAuthReady(true); // Signal that authentication is complete
+          // Set auth ready state only after we have a user (or an anonymous user)
+          setIsAuthReady(true);
+          setLoading(false); // Stop loading once auth is ready
         });
 
-        // Handle initial URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const id = urlParams.get('id');
-        const mode = urlParams.get('mode');
-        if (id) {
-          setWindowId(id);
-          setShareLink(`${window.location.origin}${window.location.pathname}?id=${id}`);
-          if (mode === 'feedback') {
-            setIsSelfAssessment(false);
-            setPage('assess');
-          } else {
-            setIsSelfAssessment(true);
-            setPage('assess');
-          }
-        }
-        
         // Clean up the auth listener when the component unmounts
         return () => unsubscribeAuth();
 
@@ -131,56 +118,64 @@ export default function App() {
       }
     };
 
-    initFirebase();
+    initApp();
   }, []);
 
-  // Set loading to false once the app is ready to render
+  // 2. Data fetching and URL parameter handling (dependent on auth)
   useEffect(() => {
-    if (isAuthReady) {
-      setLoading(false);
-    }
-  }, [isAuthReady]);
+    if (!isAuthReady || !db || !userId) return;
 
-  // 2. Real-time data fetching with onSnapshot
-  useEffect(() => {
-    if (!db || !windowId || !userId) return;
-
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-    // Listen for changes to the main window document
-    const windowRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, windowId);
-    const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const userSelections = data.selfAssessment || [];
-
-        // Listen for changes in the feedback subcollection
-        const feedbackRef = collection(db, `/artifacts/${appId}/users/${userId}/windows/${windowId}/feedback`);
-        const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
-          const peerSelections = new Set();
-          querySnap.forEach(doc => {
-            doc.data().adjectives.forEach(adj => peerSelections.add(adj));
-          });
-
-          // Calculate Johari Window quadrants
-          const arena = userSelections.filter(adj => peerSelections.has(adj));
-          const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
-          const facade = userSelections.filter(adj => !peerSelections.has(adj));
-          const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
-
-          setResults({ arena, blindSpot, facade, unknown });
-        });
-        
-        return () => unsubscribeFeedback();
+    // Handle initial URL parameters after auth is ready
+    const urlParams = new URLSearchParams(window.location.search);
+    const id = urlParams.get('id');
+    const mode = urlParams.get('mode');
+    
+    if (id) {
+      setWindowId(id);
+      setShareLink(`${window.location.origin}${window.location.pathname}?id=${id}`);
+      if (mode === 'feedback') {
+        setIsSelfAssessment(false);
+      } else {
+        setIsSelfAssessment(true);
       }
-    });
+      setPage('assess');
+    }
 
-    return () => unsubscribeWindow();
-  }, [db, windowId, userId]);
+    // Now set up the Firestore listener if a windowId exists
+    if (windowId && userId) {
+      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      const windowRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, windowId);
+      
+      const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const userSelections = data.selfAssessment || [];
+
+          const feedbackRef = collection(db, `/artifacts/${appId}/users/${userId}/windows/${windowId}/feedback`);
+          const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
+            const peerSelections = new Set();
+            querySnap.forEach(doc => {
+              doc.data().adjectives.forEach(adj => peerSelections.add(adj));
+            });
+
+            // Calculate Johari Window quadrants
+            const arena = userSelections.filter(adj => peerSelections.has(adj));
+            const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
+            const facade = userSelections.filter(adj => !peerSelections.has(adj));
+            const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
+
+            setResults({ arena, blindSpot, facade, unknown });
+          });
+          
+          return () => unsubscribeFeedback();
+        }
+      });
+      return () => unsubscribeWindow();
+    }
+  }, [isAuthReady, db, userId, windowId]);
 
   const handleStartNewWindow = async () => {
-    // Only proceed if Firebase is initialized and a user is authenticated
-    if (!db || !userId) {
+    if (!db || !userId || !isAuthReady) {
         console.error("Attempted to start new window before Firebase and user are ready.");
         return;
     }
@@ -191,14 +186,12 @@ export default function App() {
       const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       const userDocRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, newWindowId);
 
-      // Create a new document for the window
       await setDoc(userDocRef, {
         creatorId: userId,
         createdAt: new Date(),
         selfAssessment: [],
       });
 
-      // Set state and navigate
       setWindowId(newWindowId);
       setIsSelfAssessment(true);
       setPage('assess');
@@ -227,17 +220,15 @@ export default function App() {
     try {
       const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       if (isSelfAssessment) {
-        // Save the user's own assessment
         const userDocRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, windowId);
         await updateDoc(userDocRef, {
           selfAssessment: selectedAdjectives,
         });
       } else {
-        // Save peer feedback
         const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/windows/${windowId}/feedback`);
         await addDoc(feedbackCollectionRef, {
           adjectives: selectedAdjectives,
-          submittedBy: 'anonymous', // In a real app, this might be a name or anonymous ID
+          submittedBy: 'anonymous',
           submittedAt: new Date(),
         });
       }
@@ -257,8 +248,6 @@ export default function App() {
     textarea.select();
     try {
       document.execCommand('copy');
-      // Replace alert with a modal or temporary message for better UX
-      // For this example, a simple log is used
       console.log("Link copied to clipboard!");
     } catch (err) {
       console.error('Failed to copy text: ', err);
@@ -266,9 +255,7 @@ export default function App() {
     document.body.removeChild(textarea);
   };
   
-  // Render different pages based on state
   const renderContent = () => {
-    // Show loading screen until Firebase authentication is ready
     if (loading || !isAuthReady) {
       return <p className={tailwindClasses.loading}>Loading...</p>;
     }
