@@ -139,7 +139,6 @@ export default function App() {
       const mode = urlParams.get('mode');
       setIsSelfAssessment(mode !== 'feedback');
       
-      // FIX 1: Correctly set the share link using a new variable, not the state variable.
       const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
       setShareLink(newShareLink);
       updateDebug('share_link_set', newShareLink);
@@ -181,6 +180,7 @@ export default function App() {
             setLoading(false);
           });
           
+          // FIX 3: Unsubscribe from both listeners when the component unmounts.
           return () => unsubscribeFeedback();
         } else {
             const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
@@ -189,6 +189,7 @@ export default function App() {
             setLoading(false);
         }
       });
+      // FIX 4: Unsubscribe from the main window listener as well.
       return () => unsubscribeWindow();
     } else {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
