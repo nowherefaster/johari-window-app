@@ -149,7 +149,7 @@ export default function App() {
       updateDebug('firestore_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}`);
 
       const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
-        updateDebug('onSnapshot', 'onSnapshot callback fired.');
+        updateDebug('onSnapshot_window', 'onSnapshot callback fired for window.');
         if (docSnap.exists()) {
           updateDebug('doc_exists', 'Firestore document exists. Fetching data...');
           const data = docSnap.data();
@@ -209,15 +209,18 @@ export default function App() {
         selfAssessment: [],
       });
       updateDebug('new_window_created', `Successfully created new window with ID: ${newWindowId}`);
+      updateDebug('new_window_path', `/artifacts/${appId}/users/${userId}/windows/${newWindowId}`);
 
       setWindowId(newWindowId);
       setIsSelfAssessment(true);
       setCreatorId(userId);
       setPage('assess');
-      setShareLink(`${window.location.origin}${window.location.pathname}?id=${newWindowId}&mode=feedback&creatorId=${userId}`);
+      const newShareLink = `${window.location.origin}${window.location.pathname}?id=${newWindowId}&mode=feedback&creatorId=${userId}`;
+      setShareLink(newShareLink);
+      updateDebug('new_share_link_set', newShareLink);
     } catch (e) {
       console.error("Error starting new window:", e);
-      setError("Failed to start a new window. Please try again.");
+      setError("Failed to start a new window. Please try again. The error was: " + e.message);
       updateDebug('start_new_error', `Failed to create new window: ${e.message}`);
     } finally {
       setLoading(false);
