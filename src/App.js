@@ -76,22 +76,31 @@ export default function App() {
     const initFirebase = async () => {
       updateDebug('init', 'Starting Firebase initialization...');
       try {
-        let firebaseConfig = {};
+        // Hardcoded Firebase configuration for guaranteed initialization
+        const hardcodedConfig = {
+          apiKey: "AIzaSyCJrxrdWCjPD9VGexVtJ9PNRgTjHVsK_yM",
+          authDomain: "johari-window-web-app.firebaseapp.com",
+          projectId: "johari-window-web-app",
+          storageBucket: "johari-window-web-app.firebasestorage.app",
+          messagingSenderId: "240594076283",
+          appId: "1:240594076283:web:d2288446ae4e7b21de98de",
+        };
         
-        // Log the raw value of the config variable for debugging
-        const rawConfig = typeof __firebase_config !== 'undefined' ? __firebase_config : 'undefined';
-        updateDebug('raw_config_value', rawConfig);
+        let firebaseConfig = {};
 
+        // Check for the Canvas-provided config first, fallback to hardcoded if not found
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
           try {
             firebaseConfig = JSON.parse(__firebase_config);
             updateDebug('config', 'Using Canvas-provided Firebase config.');
           } catch (e) {
-            throw new Error(`Failed to parse Firebase config JSON: ${e.message}`);
+            console.error("Failed to parse Firebase config from global variable, falling back to hardcoded config.");
+            firebaseConfig = hardcodedConfig;
+            updateDebug('config', 'Failed to parse global config, using hardcoded fallback.');
           }
         } else {
-          // Display a clear error to the user if the config is not available.
-          throw new Error("Firebase configuration is not available.");
+            firebaseConfig = hardcodedConfig;
+            updateDebug('config', 'Global config not found, using hardcoded fallback.');
         }
 
         const app = initializeApp(firebaseConfig);
