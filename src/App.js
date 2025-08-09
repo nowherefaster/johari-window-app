@@ -1,7 +1,7 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, getDocs, query, where, updateDoc } from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc } from 'firebase/firestore';
 
 // Define the Firebase context to pass services to components
 const FirebaseContext = createContext(null);
@@ -12,7 +12,7 @@ const tailwindClasses = {
   card: "bg-white p-8 rounded-lg shadow-xl max-w-2xl w-full text-center space-y-6",
   heading: "text-3xl font-bold text-gray-800",
   subheading: "text-lg text-gray-600",
-  button: "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105",
+  button: "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed",
   input: "w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500",
   adjectiveGrid: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-4",
   adjectiveButton: "py-2 px-4 rounded-lg border-2 font-medium text-sm transition duration-150 ease-in-out",
@@ -51,8 +51,8 @@ const generateUniqueId = () => {
 // Main App component
 export default function App() {
   const [db, setDb] = useState(null);
-  const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [windowId, setWindowId] = useState(null);
@@ -67,14 +67,12 @@ export default function App() {
     const initFirebase = async () => {
       try {
         let firebaseConfig = {};
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
+        // Use global variables provided by the Canvas environment if available
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-          // Use config from the Canvas environment
           firebaseConfig = JSON.parse(__firebase_config);
         } else {
-          // Use config from Vercel environment variables
+          // Fallback to Vercel environment variables if global variables are not set
           const vercelConfig = {
             apiKey: process.env.REACT_APP_API_KEY,
             authDomain: process.env.REACT_APP_AUTH_DOMAIN,
@@ -85,7 +83,7 @@ export default function App() {
           };
           
           if (!vercelConfig.apiKey || !vercelConfig.projectId) {
-            throw new Error("Firebase environment variables are not correctly set. Please check your Vercel project settings for variables with the `REACT_APP_` prefix.");
+            throw new Error("Firebase environment variables are not correctly set. Please check your Vercel project settings.");
           }
           firebaseConfig = vercelConfig;
         }
@@ -95,16 +93,16 @@ export default function App() {
         const firebaseAuth = getAuth(app);
 
         setDb(firestoreDb);
-        setAuth(firebaseAuth);
 
-        onAuthStateChanged(firebaseAuth, async (user) => {
+        // Listen for authentication state changes
+        const unsubscribeAuth = onAuthStateChanged(firebaseAuth, async (user) => {
           if (user) {
             setUserId(user.uid);
-            console.log("User authenticated:", user.uid);
           } else {
             console.log("No user found. Signing in anonymously...");
             await signInAnonymously(firebaseAuth);
           }
+          setIsAuthReady(true); // Signal that authentication is complete
         });
 
         // Handle initial URL parameters
@@ -122,11 +120,13 @@ export default function App() {
             setPage('assess');
           }
         }
+        
+        // Clean up the auth listener when the component unmounts
+        return () => unsubscribeAuth();
+
       } catch (e) {
         console.error("Error initializing Firebase:", e);
         setError(`Error: ${e.message}`);
-      } finally {
-        // Ensure loading state is always cleared
         setLoading(false);
       }
     };
@@ -134,19 +134,28 @@ export default function App() {
     initFirebase();
   }, []);
 
+  // Set loading to false once the app is ready to render
+  useEffect(() => {
+    if (isAuthReady) {
+      setLoading(false);
+    }
+  }, [isAuthReady]);
+
   // 2. Real-time data fetching with onSnapshot
   useEffect(() => {
     if (!db || !windowId || !userId) return;
 
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
     // Listen for changes to the main window document
-    const windowRef = doc(db, `/artifacts/${__app_id}/users/${userId}/windows`, windowId);
+    const windowRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, windowId);
     const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         const userSelections = data.selfAssessment || [];
 
         // Listen for changes in the feedback subcollection
-        const feedbackRef = collection(db, `/artifacts/${__app_id}/users/${userId}/windows/${windowId}/feedback`);
+        const feedbackRef = collection(db, `/artifacts/${appId}/users/${userId}/windows/${windowId}/feedback`);
         const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
           const peerSelections = new Set();
           querySnap.forEach(doc => {
@@ -170,11 +179,17 @@ export default function App() {
   }, [db, windowId, userId]);
 
   const handleStartNewWindow = async () => {
-    if (!db || !userId) return;
+    // Only proceed if Firebase is initialized and a user is authenticated
+    if (!db || !userId) {
+        console.error("Attempted to start new window before Firebase and user are ready.");
+        return;
+    }
+
     setLoading(true);
     try {
       const newWindowId = generateUniqueId();
-      const userDocRef = doc(db, `/artifacts/${__app_id}/users/${userId}/windows`, newWindowId);
+      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      const userDocRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, newWindowId);
 
       // Create a new document for the window
       await setDoc(userDocRef, {
@@ -210,15 +225,16 @@ export default function App() {
     if (!db || !windowId || !userId) return;
     setLoading(true);
     try {
+      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       if (isSelfAssessment) {
         // Save the user's own assessment
-        const userDocRef = doc(db, `/artifacts/${__app_id}/users/${userId}/windows`, windowId);
+        const userDocRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, windowId);
         await updateDoc(userDocRef, {
           selfAssessment: selectedAdjectives,
         });
       } else {
         // Save peer feedback
-        const feedbackCollectionRef = collection(db, `/artifacts/${__app_id}/users/${userId}/windows/${windowId}/feedback`);
+        const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/windows/${windowId}/feedback`);
         await addDoc(feedbackCollectionRef, {
           adjectives: selectedAdjectives,
           submittedBy: 'anonymous', // In a real app, this might be a name or anonymous ID
@@ -241,7 +257,9 @@ export default function App() {
     textarea.select();
     try {
       document.execCommand('copy');
-      alert("Link copied to clipboard!");
+      // Replace alert with a modal or temporary message for better UX
+      // For this example, a simple log is used
+      console.log("Link copied to clipboard!");
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
@@ -250,7 +268,8 @@ export default function App() {
   
   // Render different pages based on state
   const renderContent = () => {
-    if (loading) {
+    // Show loading screen until Firebase authentication is ready
+    if (loading || !isAuthReady) {
       return <p className={tailwindClasses.loading}>Loading...</p>;
     }
     
@@ -264,7 +283,7 @@ export default function App() {
           <>
             <h1 className={tailwindClasses.heading}>Discover Your Johari Window</h1>
             <p className={tailwindClasses.subheading}>A simple tool to help you and your team better understand your interpersonal dynamics.</p>
-            <button className={tailwindClasses.button} onClick={handleStartNewWindow}>
+            <button className={tailwindClasses.button} onClick={handleStartNewWindow} disabled={loading || !isAuthReady}>
               Start My Window
             </button>
           </>
@@ -286,12 +305,13 @@ export default function App() {
                   key={adj}
                   onClick={() => handleSelectAdjective(adj)}
                   className={`${tailwindClasses.adjectiveButton} ${selectedAdjectives.includes(adj) ? tailwindClasses.adjectiveSelected : tailwindClasses.adjectiveUnselected}`}
+                  disabled={loading}
                 >
                   {adj}
                 </button>
               ))}
             </div>
-            <button className={tailwindClasses.button} onClick={handleSaveAssessment}>
+            <button className={tailwindClasses.button} onClick={handleSaveAssessment} disabled={loading}>
               {isSelfAssessment ? "Submit My Selections" : "Submit Feedback"}
             </button>
           </>
@@ -351,7 +371,7 @@ export default function App() {
   };
 
   return (
-    <FirebaseContext.Provider value={{ db, auth }}>
+    <FirebaseContext.Provider value={{ db }}>
       <div className={tailwindClasses.container}>
         <div className={tailwindClasses.card}>
           {renderContent()}
