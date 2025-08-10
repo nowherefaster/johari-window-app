@@ -338,7 +338,26 @@ export default function App() {
     const initializeFirebase = async () => {
       try {
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        
+        let firebaseConfig = {};
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+          try {
+            firebaseConfig = JSON.parse(__firebase_config);
+          } catch (e) {
+            console.error("Failed to parse Firebase config JSON:", e);
+            setAppError("Firebase configuration is malformed. Check the JSON syntax.");
+            setDebugInfo(prev => ({ ...prev, error: e.message, message: "Firebase init failed due to malformed JSON." }));
+            setIsAppReady(false);
+            return;
+          }
+        }
+
+        if (!firebaseConfig || !firebaseConfig.projectId) {
+          setAppError("Firebase configuration is invalid. The 'projectId' is missing.");
+          setDebugInfo(prev => ({ ...prev, error: "'projectId' not provided in firebase.initializeApp.", message: "Firebase init failed." }));
+          setIsAppReady(false);
+          return;
+        }
 
         const app = initializeApp(firebaseConfig, appId);
         const firestore = getFirestore(app);
