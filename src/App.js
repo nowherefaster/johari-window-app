@@ -70,10 +70,22 @@ export default function App() {
   useEffect(() => {
     const initFirebase = async () => {
       try {
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
+        if (!firebaseConfigString) {
+            throw new Error('Firebase configuration not found. Please ensure the app is running in the correct environment.');
+        }
+
+        let firebaseConfig = {};
+        try {
+            firebaseConfig = JSON.parse(firebaseConfigString);
+        } catch (parseError) {
+            console.error("Failed to parse Firebase config JSON:", parseError);
+            throw new Error("Invalid Firebase configuration format.");
+        }
+        
         const app = initializeApp(firebaseConfig);
         const firestoreDb = getFirestore(app);
         const firebaseAuth = getAuth(app);
@@ -109,7 +121,7 @@ export default function App() {
         }
       } catch (e) {
         console.error("Error initializing Firebase:", e);
-        setError("Failed to initialize the app. Please try again.");
+        setError(`Failed to initialize the app: ${e.message}. Please try again.`);
         setLoading(false);
       }
     };
