@@ -9,7 +9,7 @@ const FirebaseContext = createContext(null);
 // Tailwind CSS classes for a clean, professional look inspired by Slalom
 const tailwindClasses = {
   container: "min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 overflow-x-hidden font-inter",
-  card: "bg-white p-8 rounded-lg shadow-xl max-w-2xl w-full text-center space-y-6",
+  card: "bg-white p-8 rounded-lg shadow-xl max-w-3xl w-full text-center space-y-6",
   heading: "text-3xl font-bold text-gray-800",
   subheading: "text-lg text-gray-600",
   buttonPrimary: "bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed",
@@ -21,10 +21,10 @@ const tailwindClasses = {
   copyButtonFeedback: "bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md whitespace-nowrap",
   snackbar: "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full text-white font-bold shadow-lg transition-transform duration-300 ease-in-out transform",
   snackbarError: "bg-red-500",
-  adjectiveContainer: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-6",
-  adjectiveButton: "py-2 px-4 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out text-sm md:text-base",
-  adjectiveButtonSelected: "py-2 px-4 rounded-full border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-sm md:text-base",
-  adjectiveButtonInactive: "py-2 px-4 rounded-full border-2 border-gray-200 text-gray-400 bg-gray-100",
+  adjectiveContainer: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-6",
+  adjectiveButton: "py-2 px-2 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out text-sm md:text-base text-center",
+  adjectiveButtonSelected: "py-2 px-2 rounded-full border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-sm md:text-base text-center",
+  adjectiveButtonInactive: "py-2 px-2 rounded-full border-2 border-gray-200 text-gray-400 bg-gray-100 text-center",
   adjectiveList: "mt-4 text-left p-4 bg-gray-50 rounded-lg",
   adjectiveListItem: "my-1",
   quadrantContainer: "grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-left",
