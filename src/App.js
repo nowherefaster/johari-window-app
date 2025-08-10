@@ -117,27 +117,32 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
   };
 
   const toggleAdjective = (adj) => {
+    // Log state BEFORE the click logic
     setDebugInfo(prev => ({
       ...prev,
-      lastAdjectiveClick: adj,
-      currentSelectionCount: selectedAdjectives.length,
-      action: 'Adjective clicked'
+      preClickState: {
+        lastAdjectiveClick: adj,
+        selectedCount: selectedAdjectives.length,
+        isAdjectiveSelected: selectedAdjectives.includes(adj)
+      }
     }));
-
+    
     const isSelected = selectedAdjectives.includes(adj);
     
     if (isSelected) {
-      setDebugInfo(prev => ({ ...prev, toggleAction: 'Deselecting adjective' }));
-      setSelectedAdjectives(selectedAdjectives.filter(a => a !== adj));
+      const newSelections = selectedAdjectives.filter(a => a !== adj);
+      setSelectedAdjectives(newSelections);
       setSnackbarMessage(null); // Clear message when deselecting
+      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Deselecting adjective', newCount: newSelections.length } }));
     } else {
       if (selectedAdjectives.length < MAX_SELECTIONS) {
-        setDebugInfo(prev => ({ ...prev, toggleAction: 'Selecting new adjective' }));
-        setSelectedAdjectives([...selectedAdjectives, adj]);
+        const newSelections = [...selectedAdjectives, adj];
+        setSelectedAdjectives(newSelections);
         setSnackbarMessage(null); // Clear message when selecting
+        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selecting new adjective', newCount: newSelections.length } }));
       } else {
-        setDebugInfo(prev => ({ ...prev, toggleAction: 'Max selections reached, setting snackbar' }));
         setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set' } }));
       }
     }
   };
@@ -177,27 +182,32 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
   const MAX_SELECTIONS = 5;
 
   const toggleAdjective = (adj) => {
+    // Log state BEFORE the click logic
     setDebugInfo(prev => ({
       ...prev,
-      lastAdjectiveClick: adj,
-      currentSelectionCount: selectedAdjectives.length,
-      action: 'Adjective clicked (Feedback Provider)'
+      preClickState: {
+        lastAdjectiveClick: adj,
+        selectedCount: selectedAdjectives.length,
+        isAdjectiveSelected: selectedAdjectives.includes(adj)
+      }
     }));
 
     const isSelected = selectedAdjectives.includes(adj);
 
     if (isSelected) {
-      setDebugInfo(prev => ({ ...prev, toggleAction: 'Deselecting adjective (Feedback Provider)' }));
-      setSelectedAdjectives(selectedAdjectives.filter(a => a !== adj));
+      const newSelections = selectedAdjectives.filter(a => a !== adj);
+      setSelectedAdjectives(newSelections);
       setSnackbarMessage(null); // Clear message when deselecting
+      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Deselecting adjective (Feedback Provider)', newCount: newSelections.length } }));
     } else {
       if (selectedAdjectives.length < MAX_SELECTIONS) {
-        setDebugInfo(prev => ({ ...prev, toggleAction: 'Selecting new adjective (Feedback Provider)' }));
-        setSelectedAdjectives([...selectedAdjectives, adj]);
+        const newSelections = [...selectedAdjectives, adj];
+        setSelectedAdjectives(newSelections);
         setSnackbarMessage(null); // Clear message when selecting
+        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selecting new adjective (Feedback Provider)', newCount: newSelections.length } }));
       } else {
-        setDebugInfo(prev => ({ ...prev, toggleAction: 'Max selections reached, setting snackbar (Feedback Provider)' }));
         setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set (Feedback Provider)' } }));
       }
     }
   };
