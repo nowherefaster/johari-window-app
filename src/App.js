@@ -117,16 +117,26 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
   };
 
   const toggleAdjective = (adj) => {
+    setDebugInfo(prev => ({
+      ...prev,
+      lastAdjectiveClick: adj,
+      currentSelectionCount: selectedAdjectives.length,
+      action: 'Adjective clicked'
+    }));
+
     const isSelected = selectedAdjectives.includes(adj);
     
     if (isSelected) {
+      setDebugInfo(prev => ({ ...prev, toggleAction: 'Deselecting adjective' }));
       setSelectedAdjectives(selectedAdjectives.filter(a => a !== adj));
       setSnackbarMessage(null); // Clear message when deselecting
     } else {
       if (selectedAdjectives.length < MAX_SELECTIONS) {
+        setDebugInfo(prev => ({ ...prev, toggleAction: 'Selecting new adjective' }));
         setSelectedAdjectives([...selectedAdjectives, adj]);
         setSnackbarMessage(null); // Clear message when selecting
       } else {
+        setDebugInfo(prev => ({ ...prev, toggleAction: 'Max selections reached, setting snackbar' }));
         setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
       }
     }
@@ -167,16 +177,26 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
   const MAX_SELECTIONS = 5;
 
   const toggleAdjective = (adj) => {
+    setDebugInfo(prev => ({
+      ...prev,
+      lastAdjectiveClick: adj,
+      currentSelectionCount: selectedAdjectives.length,
+      action: 'Adjective clicked (Feedback Provider)'
+    }));
+
     const isSelected = selectedAdjectives.includes(adj);
 
     if (isSelected) {
+      setDebugInfo(prev => ({ ...prev, toggleAction: 'Deselecting adjective (Feedback Provider)' }));
       setSelectedAdjectives(selectedAdjectives.filter(a => a !== adj));
       setSnackbarMessage(null); // Clear message when deselecting
     } else {
       if (selectedAdjectives.length < MAX_SELECTIONS) {
+        setDebugInfo(prev => ({ ...prev, toggleAction: 'Selecting new adjective (Feedback Provider)' }));
         setSelectedAdjectives([...selectedAdjectives, adj]);
         setSnackbarMessage(null); // Clear message when selecting
       } else {
+        setDebugInfo(prev => ({ ...prev, toggleAction: 'Max selections reached, setting snackbar (Feedback Provider)' }));
         setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
       }
     }
