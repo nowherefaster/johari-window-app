@@ -17,15 +17,15 @@ const tailwindClasses = {
   input: "w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500",
   linkContainer: "flex items-center space-x-2",
   linkInput: "flex-grow p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-mono text-sm",
-  copyButton: "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105",
-  copyButtonFeedback: "bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md",
+  copyButton: "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 whitespace-nowrap",
+  copyButtonFeedback: "bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md whitespace-nowrap",
   feedbackContainer: "mt-4 p-4 rounded-lg",
   successFeedback: "bg-green-100 text-green-700",
   errorFeedback: "bg-red-100 text-red-700",
   adjectiveContainer: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-6",
   adjectiveButton: "py-2 px-4 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out",
   adjectiveButtonSelected: "py-2 px-4 rounded-full border-2 border-indigo-600 bg-indigo-50 text-indigo-700 font-bold",
-  adjectiveList: "mt-4 text-left p-4 bg-gray-50 rounded-lg max-h-48 overflow-y-auto",
+  adjectiveList: "mt-4 text-left p-4 bg-gray-50 rounded-lg", // Removed scrolling
   adjectiveListItem: "my-1",
   quadrantContainer: "grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-left",
   quadrant: "bg-gray-50 p-4 rounded-lg",
@@ -214,7 +214,7 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
 };
 
 // Component to display the creator's window
-const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAppReady, handleCreateNewWindow }) => {
+const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAppReady, handleCreateNewWindow, userId, handleEditSelections }) => {
   const [copyButtonText, setCopyButtonText] = useState("Copy Link");
 
   // Function to copy link and provide feedback
@@ -237,11 +237,13 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
   const facade = adjectives.filter(adj => selfSelections.includes(adj) && !feedbackSelections.has(adj));
   const unknown = adjectives.filter(adj => !selfSelections.includes(adj) && !feedbackSelections.has(adj));
 
+  const responsesCount = Object.keys(allFeedback).length;
+
   return (
     <>
-      <h1 className={tailwindClasses.heading}>Your Johari Window for {windowData.creatorName}</h1>
+      <h1 className={tailwindClasses.heading}>{windowData.creatorName}'s Johari Window</h1>
       <p className={tailwindClasses.subheading}>Share this link with your teammates to get feedback!</p>
-      <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 items-center justify-center w-full">
+      <div className="flex flex-col items-center justify-center space-y-4 w-full">
         <input
           type="text"
           id="creatorLinkInput"
@@ -257,6 +259,8 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
           {copyButtonText}
         </button>
       </div>
+
+      <p className="text-lg font-bold text-gray-800 mt-4">{responsesCount} Teammate Responses</p>
 
       <div className={tailwindClasses.quadrantContainer}>
         <div className={tailwindClasses.quadrant}>
@@ -300,12 +304,22 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
           </ul>
         </div>
       </div>
-      <button
-        className={tailwindClasses.buttonPrimary}
-        onClick={handleCreateNewWindow}
-      >
-        Create Another Window
-      </button>
+      <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 justify-center">
+        {userId && windowData.creatorId === userId && (
+          <button
+            className={tailwindClasses.buttonSecondary}
+            onClick={handleEditSelections}
+          >
+            Edit My Selections
+          </button>
+        )}
+        <button
+          className={tailwindClasses.buttonPrimary}
+          onClick={handleCreateNewWindow}
+        >
+          Create Another Window
+        </button>
+      </div>
     </>
   );
 };
@@ -329,6 +343,12 @@ export default function App() {
     setWindowId(null);
     setAppState('home');
     setWindowData(null); // Clear previous window data
+  };
+
+  // Function to edit selections, only available to creator
+  const handleEditSelections = () => {
+    setAppState('creatorAdjectiveSelection');
+    // We don't clear the windowId, so the update will be applied to the same document
   };
 
 
@@ -530,6 +550,8 @@ export default function App() {
                 setWindowId={setWindowId}
                 isAppReady={isAppReady}
                 handleCreateNewWindow={handleCreateNewWindow}
+                userId={userId}
+                handleEditSelections={handleEditSelections}
               />
             ) : (
               <div>
@@ -537,7 +559,7 @@ export default function App() {
                 <p className={tailwindClasses.subheading}>
                   Share this link to get feedback from your teammates.
                 </p>
-                <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 items-center justify-center w-full">
+                <div className="flex flex-col items-center justify-center space-y-4 w-full">
                   <input
                     type="text"
                     id="creatorLinkInput"
