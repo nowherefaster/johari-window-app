@@ -523,7 +523,7 @@ export default function App() {
                 <div className="relative">
                   <button className={tailwindClasses.buttonPrimary} onClick={handleCopyLink}>Copy Link</button>
                   {isCopied && (
-                    <span className="absolute left-full ml-4 text-green-600 font-medium whitespace-nowrap animate-fade-in-out">
+                    <span className="absolute top-1/2 left-full -translate-y-1/2 ml-4 text-green-600 font-medium whitespace-nowrap animate-fade-in-out">
                       Copied! ✅
                     </span>
                   )}
