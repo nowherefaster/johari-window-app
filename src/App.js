@@ -66,6 +66,7 @@ export default function App() {
   const [page, setPage] = useState('start');
   const [shareLink, setShareLink] = useState('');
   const [debugInfo, setDebugInfo] = useState({});
+  const [hasSubmittedSelfAssessment, setHasSubmittedSelfAssessment] = useState(false);
 
   const updateDebug = (key, value) => {
     setDebugInfo(prev => ({ ...prev, [key]: value }));
@@ -156,10 +157,11 @@ export default function App() {
         updateDebug('app_id_error', 'App ID is not available. Using default.');
       }
 
+      const isCreator = userId === creatorIdFromUrl;
+
       // Separate the logic based on the mode.
-      if (mode === 'feedback') {
-        // If it's a feedback link, set the page to 'assess' and stop loading.
-        updateDebug('mode_check', 'Mode is "feedback". Setting page to "assess".');
+      if (mode === 'feedback' || !isCreator) {
+        updateDebug('mode_check', 'Mode is "feedback" or user is not creator. Setting page to "assess".');
         setIsSelfAssessment(false);
         setPage('assess');
         setLoading(false);
@@ -168,9 +170,9 @@ export default function App() {
         setShareLink(newShareLink);
         updateDebug('share_link_set', newShareLink);
 
-      } else {
-        // If it's the creator's link or an unknown mode, set up listeners for results.
-        updateDebug('mode_check', 'Mode is not "feedback". Setting up results listeners.');
+      } else if (isCreator) {
+        // This is the creator's link, set up listeners for results.
+        updateDebug('mode_check', 'User is the creator. Setting up results listeners.');
         setIsSelfAssessment(true);
         
         const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
@@ -186,8 +188,15 @@ export default function App() {
             updateDebug('doc_exists', 'Firestore document exists. Fetching data...');
             const data = docSnap.data();
             const userSelections = data.selfAssessment || [];
+
+            if (userSelections.length > 0) {
+              setHasSubmittedSelfAssessment(true);
+              setPage('results');
+            } else {
+              setHasSubmittedSelfAssessment(false);
+              setPage('assess');
+            }
             
-            setPage('results');
             setLoading(false);
 
             const feedbackRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
