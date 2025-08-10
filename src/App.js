@@ -16,9 +16,9 @@ const tailwindClasses = {
   buttonSecondary: "bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out",
   input: "w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500",
   adjectiveGrid: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-4",
-  adjectiveButton: "py-2 px-4 rounded-lg border-2 font-medium text-sm transition duration-150 ease-in-out",
-  adjectiveSelected: "bg-indigo-600 text-white border-indigo-600",
-  adjectiveUnselected: "bg-white text-gray-700 border-gray-300 hover:bg-gray-100",
+  adjectiveButton: "py-2 px-4 rounded-lg border-2 font-medium text-sm transition-all duration-150 ease-in-out",
+  adjectiveSelected: "bg-indigo-100 text-indigo-800 border-indigo-400",
+  adjectiveUnselected: "bg-white text-gray-700 border-gray-300 hover:bg-gray-50",
   resultsGrid: "grid grid-cols-1 md:grid-cols-2 gap-4 mt-6",
   quadrant: "p-4 rounded-lg shadow-inner",
   quadrantArena: "bg-green-100 border-green-500",
@@ -458,7 +458,7 @@ export default function App() {
             <div className={tailwindClasses.linkContainer}>
               <p>Your unique share link:</p>
               <div className={tailwindClasses.link}>{shareLink}</div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center justify-center space-x-2 mt-4">
                 <button className={tailwindClasses.copyButton} onClick={handleCopyLink}>Copy Link</button>
                 {isCopied && <span className="text-green-600 font-medium">Copied! ✅</span>}
               </div>
@@ -505,7 +505,7 @@ export default function App() {
           <>
             <h1 className={tailwindClasses.heading}>Thank you for your feedback!</h1>
             <p className={tailwindClasses.subheading}>Your selections have been successfully submitted.</p>
-            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 justify-center">
               <button
                 className={tailwindClasses.buttonSecondary}
                 onClick={handleUpdateFeedback}
