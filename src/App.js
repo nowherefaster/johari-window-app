@@ -66,30 +66,36 @@ export default function App() {
   const [shareLink, setShareLink] = useState('');
   const [showGuide, setShowGuide] = useState(false); // New state for the guide modal
 
+  // Function to initialize Firebase with retries
+  const initializeFirebaseWithRetry = async (retries = 3, delay = 100) => {
+    try {
+      const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+      if (!firebaseConfigString) {
+          throw new Error('Firebase configuration not found.');
+      }
+      const firebaseConfig = JSON.parse(firebaseConfigString);
+      
+      const app = initializeApp(firebaseConfig);
+      const firestoreDb = getFirestore(app);
+      const firebaseAuth = getAuth(app);
+      
+      return { firestoreDb, firebaseAuth };
+    } catch (e) {
+      console.error(`Firebase initialization attempt failed. Retries left: ${retries}`);
+      if (retries > 0) {
+        await new Promise(res => setTimeout(res, delay));
+        return initializeFirebaseWithRetry(retries - 1, delay * 2); // Exponential backoff
+      }
+      throw e;
+    }
+  };
+  
   // 1. Firebase Initialization and Authentication
   useEffect(() => {
-    const initFirebase = async () => {
+    const initApp = async () => {
       try {
-        const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        if (!firebaseConfigString) {
-            throw new Error('Firebase configuration not found. Please ensure the app is running in the correct environment.');
-        }
-
-        let firebaseConfig = {};
-        try {
-            firebaseConfig = JSON.parse(firebaseConfigString);
-        } catch (parseError) {
-            console.error("Failed to parse Firebase config JSON:", parseError);
-            throw new Error("Invalid Firebase configuration format.");
-        }
+        const { firestoreDb, firebaseAuth } = await initializeFirebaseWithRetry();
         
-        const app = initializeApp(firebaseConfig);
-        const firestoreDb = getFirestore(app);
-        const firebaseAuth = getAuth(app);
-
         setDb(firestoreDb);
         setAuth(firebaseAuth);
 
@@ -125,13 +131,8 @@ export default function App() {
         setLoading(false);
       }
     };
-
-    // A small delay to ensure the environment has time to provide the config
-    const timeout = setTimeout(() => {
-      initFirebase();
-    }, 100);
-
-    return () => clearTimeout(timeout);
+    
+    initApp();
   }, []);
 
   // 2. Real-time data fetching with onSnapshot
