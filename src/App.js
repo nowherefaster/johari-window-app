@@ -1,7 +1,7 @@
 import React, { useState, useEffect, createContext } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot, collection, addDoc, updateDoc, getDoc } from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getFirestore, doc, onSnapshot, collection, addDoc, updateDoc, getDoc, query, where, getDocs } from 'firebase/firestore';
 
 // Define the Firebase context to pass services to components
 const FirebaseContext = createContext(null);
@@ -102,7 +102,6 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
         const docRef = await addDoc(windowsCollection, {
           creatorName: creatorName,
           selfSelections: selectedAdjectives,
-          feedback: {},
           creatorId: userId,
           createdAt: new Date()
         });
@@ -173,6 +172,7 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
               key={adj}
               className={buttonClassName}
               onClick={() => toggleAdjective(adj)}
+              disabled={isInactive}
             >
               {adj}
             </button>
@@ -233,22 +233,22 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
   };
 
   const handleSubmitFeedback = async () => {
+    if (selectedAdjectives.length === 0) {
+      setSnackbarMessage({ type: 'error', message: "Please select at least one adjective." });
+      return;
+    }
+
     try {
-      const docRef = doc(db, `artifacts/${appId}/public/data/windows`, windowId);
-      const windowDoc = await getDoc(docRef);
-      const currentFeedback = windowDoc.data().feedback || {};
-
-      const feedbackId = new Date().toISOString();
-      const newFeedback = {
-        ...currentFeedback,
-        [feedbackId]: selectedAdjectives,
-      };
-
-      await updateDoc(docRef, { feedback: newFeedback });
+      const feedbackCollection = collection(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`);
+      await addDoc(feedbackCollection, {
+        selections: selectedAdjectives,
+        createdAt: new Date(),
+      });
       setAppState('submitted');
-      setDebugInfo(prev => ({...prev, message: "Successfully submitted feedback.", docId: windowId}));
+      setDebugInfo(prev => ({...prev, message: "Successfully submitted feedback to subcollection.", windowId: windowId}));
     } catch (e) {
       console.error("Error submitting feedback: ", e);
+      setSnackbarMessage({ type: 'error', message: "Failed to submit feedback. Please try again." });
       setDebugInfo(prev => ({...prev, error: e.message, message: "Firestore write failed in handleSubmitFeedback."}));
     }
   };
@@ -273,6 +273,7 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
               key={adj}
               className={buttonClassName}
               onClick={() => toggleAdjective(adj)}
+              disabled={isInactive}
             >
               {adj}
             </button>
@@ -305,16 +306,16 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
 
   // Logic to calculate the four quadrants
   const selfSelections = windowData?.selfSelections || [];
-  const allFeedback = windowData?.feedback || {};
+  const allFeedback = windowData?.feedback || [];
   const feedbackSelections = new Set();
-  Object.values(allFeedback).forEach(arr => arr.forEach(adj => feedbackSelections.add(adj)));
+  allFeedback.forEach(feedbackDoc => feedbackDoc.selections.forEach(adj => feedbackSelections.add(adj)));
 
   const arena = adjectives.filter(adj => selfSelections.includes(adj) && feedbackSelections.has(adj));
   const blindSpot = adjectives.filter(adj => !selfSelections.includes(adj) && feedbackSelections.has(adj));
   const facade = adjectives.filter(adj => selfSelections.includes(adj) && !feedbackSelections.has(adj));
   const unknown = adjectives.filter(adj => !selfSelections.includes(adj) && !feedbackSelections.has(adj));
 
-  const responsesCount = Object.keys(allFeedback).length;
+  const responsesCount = allFeedback.length;
 
   return (
     <>
@@ -516,18 +517,18 @@ export default function App() {
 
     setDebugInfo(prev => ({...prev, message: "onSnapshot listener for window started."}));
 
-    const unsub = onSnapshot(doc(db, `artifacts/${appId}/public/data/windows`, windowId), (docSnap) => {
-      setDebugInfo(prev => ({...prev, message: "onSnapshot callback fired.", docExists: docSnap.exists()}));
+    const unsubWindow = onSnapshot(doc(db, `artifacts/${appId}/public/data/windows`, windowId), (docSnap) => {
+      setDebugInfo(prev => ({...prev, message: "onSnapshot callback fired for main window.", docExists: docSnap.exists()}));
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setWindowData(data);
+        setWindowData(prevData => ({ ...prevData, creatorName: data.creatorName, selfSelections: data.selfSelections, creatorId: data.creatorId }));
         setCreatorName(data.creatorName);
         if (data.creatorId === userId) {
           setAppState('windowCreated');
         } else {
           setAppState('feedback');
         }
-        setDebugInfo(prev => ({...prev, message: "Window data received and state updated.", windowData: data}));
+        setDebugInfo(prev => ({...prev, message: "Window data received and state updated.", creatorData: data}));
       } else {
         setAppError("Error: This Johari Window does not exist or you don't have access to it.");
         setAppState('error');
@@ -535,9 +536,19 @@ export default function App() {
       }
     });
 
+    const unsubFeedback = onSnapshot(collection(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`), (querySnapshot) => {
+      const feedbackDocs = [];
+      querySnapshot.forEach(doc => {
+        feedbackDocs.push(doc.data());
+      });
+      setWindowData(prevData => ({ ...prevData, feedback: feedbackDocs }));
+      setDebugInfo(prev => ({...prev, message: "Feedback data received from subcollection.", feedbackData: feedbackDocs}));
+    });
+
     return () => {
-      setDebugInfo(prev => ({...prev, message: "onSnapshot listener for window unsubscribed."}));
-      unsub();
+      setDebugInfo(prev => ({...prev, message: "onSnapshot listeners unsubscribed."}));
+      unsubWindow();
+      unsubFeedback();
     };
   }, [db, windowId, isAppReady, appId, userId]);
 
