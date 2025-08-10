@@ -129,25 +129,24 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
     
     const isSelected = selectedAdjectives.includes(adj);
 
-    // If the adjective is not selected and we've reached the max limit, show an error.
-    if (!isSelected && selectedAdjectives.length >= MAX_SELECTIONS) {
-      setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set' } }));
-      return;
-    }
-
     if (isSelected) {
       // If the adjective is already selected, deselect it.
       const newSelections = selectedAdjectives.filter(a => a !== adj);
       setSelectedAdjectives(newSelections);
       setSnackbarMessage(null); // Clear any existing message
-      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Deselecting adjective', newCount: newSelections.length } }));
+      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Deselected adjective', newCount: newSelections.length } }));
     } else {
+      // If the adjective is not selected and we've reached the max limit, show an error.
+      if (selectedAdjectives.length >= MAX_SELECTIONS) {
+        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: `Max selections reached (${MAX_SELECTIONS}), snackbar set`, newCount: selectedAdjectives.length } }));
+        return;
+      }
       // If the adjective is not selected, select it.
       const newSelections = [...selectedAdjectives, adj];
       setSelectedAdjectives(newSelections);
       setSnackbarMessage(null); // Clear any existing message
-      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selecting new adjective', newCount: newSelections.length } }));
+      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selected new adjective', newCount: newSelections.length } }));
     }
   };
 
@@ -158,12 +157,12 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
       <div className={tailwindClasses.adjectiveContainer}>
         {adjectives.map((adj) => {
           const isSelected = selectedAdjectives.includes(adj);
-          const isInactive = !isSelected && selectedAdjectives.length >= MAX_SELECTIONS;
+          const isAtMax = selectedAdjectives.length >= MAX_SELECTIONS;
           
           let buttonClassName = tailwindClasses.adjectiveButton;
           if (isSelected) {
             buttonClassName = tailwindClasses.adjectiveButtonSelected;
-          } else if (isInactive) {
+          } else if (isAtMax) {
             buttonClassName = tailwindClasses.adjectiveButtonInactive;
           }
 
@@ -172,7 +171,6 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
               key={adj}
               className={buttonClassName}
               onClick={() => toggleAdjective(adj)}
-              disabled={isInactive}
             >
               {adj}
             </button>
@@ -209,26 +207,25 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
     }));
     
     const isSelected = selectedAdjectives.includes(adj);
-
-    // If the adjective is not selected and we've reached the max limit, show an error.
-    if (!isSelected && selectedAdjectives.length >= MAX_SELECTIONS) {
-      setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set (Feedback Provider)' } }));
-      return;
-    }
-
+    
     if (isSelected) {
       // If the adjective is already selected, deselect it.
       const newSelections = selectedAdjectives.filter(a => a !== adj);
       setSelectedAdjectives(newSelections);
       setSnackbarMessage(null); // Clear any existing message
-      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Deselecting adjective (Feedback Provider)', newCount: newSelections.length } }));
+      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Deselected adjective (Feedback Provider)', newCount: newSelections.length } }));
     } else {
+      // If the adjective is not selected and we've reached the max limit, show an error.
+      if (selectedAdjectives.length >= MAX_SELECTIONS) {
+        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: `Max selections reached (${MAX_SELECTIONS}), snackbar set (Feedback Provider)`, newCount: selectedAdjectives.length } }));
+        return;
+      }
       // If the adjective is not selected, select it.
       const newSelections = [...selectedAdjectives, adj];
       setSelectedAdjectives(newSelections);
       setSnackbarMessage(null); // Clear any existing message
-      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selecting new adjective (Feedback Provider)', newCount: newSelections.length } }));
+      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selected new adjective (Feedback Provider)', newCount: newSelections.length } }));
     }
   };
 
@@ -260,12 +257,12 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
       <div className={tailwindClasses.adjectiveContainer}>
         {adjectives.map((adj) => {
           const isSelected = selectedAdjectives.includes(adj);
-          const isInactive = !isSelected && selectedAdjectives.length >= MAX_SELECTIONS;
+          const isAtMax = selectedAdjectives.length >= MAX_SELECTIONS;
 
           let buttonClassName = tailwindClasses.adjectiveButton;
           if (isSelected) {
             buttonClassName = tailwindClasses.adjectiveButtonSelected;
-          } else if (isInactive) {
+          } else if (isAtMax) {
             buttonClassName = tailwindClasses.adjectiveButtonInactive;
           }
           return (
@@ -273,7 +270,6 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
               key={adj}
               className={buttonClassName}
               onClick={() => toggleAdjective(adj)}
-              disabled={isInactive}
             >
               {adj}
             </button>
