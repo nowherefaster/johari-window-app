@@ -126,24 +126,27 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
         isAdjectiveSelected: selectedAdjectives.includes(adj)
       }
     }));
-    
+
     const isSelected = selectedAdjectives.includes(adj);
+
+    // If the user is trying to select a new adjective and has reached the max limit, show the error immediately.
+    if (!isSelected && selectedAdjectives.length >= MAX_SELECTIONS) {
+        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set' } }));
+        return;
+    }
     
+    // Toggle the adjective
     if (isSelected) {
       const newSelections = selectedAdjectives.filter(a => a !== adj);
       setSelectedAdjectives(newSelections);
       setSnackbarMessage(null); // Clear message when deselecting
       setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Deselecting adjective', newCount: newSelections.length } }));
     } else {
-      if (selectedAdjectives.length < MAX_SELECTIONS) {
-        const newSelections = [...selectedAdjectives, adj];
-        setSelectedAdjectives(newSelections);
-        setSnackbarMessage(null); // Clear message when selecting
-        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selecting new adjective', newCount: newSelections.length } }));
-      } else {
-        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set' } }));
-      }
+      const newSelections = [...selectedAdjectives, adj];
+      setSelectedAdjectives(newSelections);
+      setSnackbarMessage(null); // Clear message when selecting
+      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selecting new adjective', newCount: newSelections.length } }));
     }
   };
 
@@ -194,21 +197,24 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
 
     const isSelected = selectedAdjectives.includes(adj);
 
+    // If the user is trying to select a new adjective and has reached the max limit, show the error immediately.
+    if (!isSelected && selectedAdjectives.length >= MAX_SELECTIONS) {
+        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set (Feedback Provider)' } }));
+        return;
+    }
+    
+    // Toggle the adjective
     if (isSelected) {
       const newSelections = selectedAdjectives.filter(a => a !== adj);
       setSelectedAdjectives(newSelections);
       setSnackbarMessage(null); // Clear message when deselecting
       setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Deselecting adjective (Feedback Provider)', newCount: newSelections.length } }));
     } else {
-      if (selectedAdjectives.length < MAX_SELECTIONS) {
-        const newSelections = [...selectedAdjectives, adj];
-        setSelectedAdjectives(newSelections);
-        setSnackbarMessage(null); // Clear message when selecting
-        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selecting new adjective (Feedback Provider)', newCount: newSelections.length } }));
-      } else {
-        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set (Feedback Provider)' } }));
-      }
+      const newSelections = [...selectedAdjectives, adj];
+      setSelectedAdjectives(newSelections);
+      setSnackbarMessage(null); // Clear message when selecting
+      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selecting new adjective (Feedback Provider)', newCount: newSelections.length } }));
     }
   };
 
