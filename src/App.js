@@ -198,9 +198,9 @@ export default function App() {
         setIsWindowDataLoaded(true); // Signal that the window data is ready
         
         if (userId === creatorId) {
-          if (selfAssessmentFromDb.length > 0) {
+          if (selfAssessmentFromDb.length > 0 && page !== 'assess') {
             setPage('results');
-          } else {
+          } else if (page !== 'results') {
             setPage('assess');
           }
         }
@@ -385,7 +385,8 @@ export default function App() {
           selfAssessment: selectedAdjectives,
         });
         updateDebug('assessment_saved', `Self-assessment saved with ${selectedAdjectives.length} adjectives.`);
-        // The onSnapshot listener will update the page and results
+        // Explicitly set the page back to results after saving
+        setPage('results');
       } else {
         const feedbackCollectionRef = collection(db, `/artifacts/${appId}/public/data/windows/${windowId}/feedback`);
         
