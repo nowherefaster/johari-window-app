@@ -67,7 +67,6 @@ export default function App() {
   const [shareLink, setShareLink] = useState('');
   const [debugInfo, setDebugInfo] = useState({});
   const [hasSubmittedSelfAssessment, setHasSubmittedSelfAssessment] = useState(false);
-  const [hasSubmittedFeedback, setHasSubmittedFeedback] = useState(false);
 
   const updateDebug = (key, value) => {
     setDebugInfo(prev => ({ ...prev, [key]: value }));
@@ -136,6 +135,8 @@ export default function App() {
       updateDebug('phase2_status', 'Waiting for DB and userId to be available...');
       return;
     }
+
+    setLoading(true);
     updateDebug('phase2_status', `DB and userId (${userId}) are ready. Checking URL...`);
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -220,20 +221,19 @@ export default function App() {
         updateDebug('mode_check', 'User is a teammate. Checking for existing feedback.');
         setIsSelfAssessment(false);
         const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
-        const q = query(feedbackCollectionRef);
         
-        getDocs(q).then(querySnapshot => {
+        getDocs(feedbackCollectionRef).then(querySnapshot => {
           let existingFeedback = null;
           querySnapshot.forEach(docSnap => {
             if (docSnap.data().submittedBy === userId) {
               existingFeedback = docSnap.data();
+              return;
             }
           });
 
           if (existingFeedback) {
             updateDebug('existing_feedback_found', `Found existing feedback for user ${userId}. Redirecting to submitted page.`);
             setSelectedAdjectives(existingFeedback.adjectives);
-            setHasSubmittedFeedback(true);
             setPage('submitted');
           } else {
             updateDebug('no_existing_feedback', `No existing feedback found for user ${userId}. Redirecting to assessment page.`);
@@ -304,6 +304,14 @@ export default function App() {
       }
     });
   };
+  
+  const handleUpdateFeedback = () => {
+    setPage('assess');
+  };
+
+  const handleCreateNewWindow = () => {
+    window.location.href = window.location.origin + window.location.pathname;
+  };
 
   const handleSaveAssessment = async () => {
     if (!db || !windowId || !userId || !creatorId) return;
@@ -325,19 +333,16 @@ export default function App() {
       } else {
         const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
         
-        // Find existing feedback document
-        const existingFeedbackQuery = query(feedbackCollectionRef);
-        const querySnapshot = await getDocs(existingFeedbackQuery);
-        let existingFeedbackDoc = null;
+        const querySnapshot = await getDocs(feedbackCollectionRef);
+        let existingFeedbackDocId = null;
         querySnapshot.forEach(docSnap => {
           if (docSnap.data().submittedBy === userId) {
-            existingFeedbackDoc = docSnap.id;
+            existingFeedbackDocId = docSnap.id;
           }
         });
         
-        // If feedback exists, update it, otherwise create a new one
-        if (existingFeedbackDoc) {
-          const docRef = doc(feedbackCollectionRef, existingFeedbackDoc);
+        if (existingFeedbackDocId) {
+          const docRef = doc(feedbackCollectionRef, existingFeedbackDocId);
           await updateDoc(docRef, { adjectives: selectedAdjectives });
           updateDebug('feedback_updated', 'Existing feedback updated.');
         } else {
@@ -349,8 +354,6 @@ export default function App() {
           updateDebug('feedback_submitted', 'New feedback submitted.');
         }
 
-        // Set the page state for the teammate
-        setHasSubmittedFeedback(true);
         setPage('submitted');
       }
     } catch (e) {
@@ -381,17 +384,12 @@ export default function App() {
       return <p className={tailwindClasses.loading}>Loading...</p>;
     }
     
-    // Improved error message for missing Firebase config
     if (error && error.includes("Firebase configuration is not available")) {
       return (
         <div className="text-center p-4">
           <h1 className="text-3xl font-bold text-red-600">⚠️ Configuration Error</h1>
           <p className="mt-4 text-lg text-red-500">
             The Firebase configuration is missing. This app cannot run without it.
-            Please ensure the `REACT_APP_FIREBASE_CONFIG` environment variable is set.
-          </p>
-          <p className="mt-2 text-sm text-gray-600">
-            It should be a JSON string that contains your project's `apiKey`, `projectId`, etc.
           </p>
           <div className={tailwindClasses.debugPanel}>
             <h3 className={tailwindClasses.debugTitle}>Current Debug Log</h3>
@@ -491,7 +489,7 @@ export default function App() {
               </div>
             )}
             
-            <button className={`${tailwindClasses.button} mt-8`} onClick={() => window.location.href = window.location.origin + window.location.pathname}>
+            <button className={`${tailwindClasses.button} mt-8`} onClick={handleCreateNewWindow}>
               Create Another Window
             </button>
           </>
@@ -504,13 +502,13 @@ export default function App() {
             <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
               <button
                 className={tailwindClasses.button}
-                onClick={() => setPage('assess')}
+                onClick={handleUpdateFeedback}
               >
                 Update My Feedback
               </button>
               <button
                 className={tailwindClasses.button}
-                onClick={handleStartNewWindow}
+                onClick={handleCreateNewWindow}
               >
                 Create My Own Window
               </button>
