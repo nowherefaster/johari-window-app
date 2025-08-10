@@ -184,7 +184,7 @@ export default function App() {
     }
     
     // Use a public path that any authenticated user can read
-    const windowRef = doc(db, `/artifacts/${appId}/public/windows`, windowId);
+    const windowRef = doc(db, `/artifacts/${appId}/public/data/windows`, windowId);
     
     const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
       updateDebug('onSnapshot_window', 'Window snapshot fired.');
@@ -318,7 +318,7 @@ export default function App() {
       }
       
       // Use the new public path for the main window document
-      const windowDocRef = doc(db, `/artifacts/${appId}/public/windows`, newWindowId);
+      const windowDocRef = doc(db, `/artifacts/${appId}/public/data/windows`, newWindowId);
 
       await setDoc(windowDocRef, {
         creatorId: userId,
@@ -327,7 +327,7 @@ export default function App() {
         creatorName: creatorName,
       });
       updateDebug('new_window_created', `Successfully created new window with ID: ${newWindowId}`);
-      updateDebug('new_window_path', `/artifacts/${appId}/public/windows/${newWindowId}`);
+      updateDebug('new_window_path', `/artifacts/${appId}/public/data/windows/${newWindowId}`);
       
       setWindowId(newWindowId);
       setCreatorId(userId);
@@ -377,7 +377,7 @@ export default function App() {
       }
       if (isSelfAssessment) {
         // Creator's self-assessment path needs to change as well.
-        const windowDocRef = doc(db, `/artifacts/${appId}/public/windows`, windowId);
+        const windowDocRef = doc(db, `/artifacts/${appId}/public/data/windows`, windowId);
         await updateDoc(windowDocRef, {
           selfAssessment: selectedAdjectives,
         });
