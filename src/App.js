@@ -1,7 +1,7 @@
 import React, { useState, useEffect, createContext } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, query, where, getDocs, getDoc } from 'firebase/firestore';
 
 // Define the Firebase context to pass services to components
 const FirebaseContext = createContext(null);
@@ -45,7 +45,7 @@ const adjectives = [
 ];
 
 // Component for the welcome page with name input
-const WelcomePage = ({ setAppState, creatorName, setCreatorName }) => {
+const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) => {
   const [submissionStatus, setSubmissionStatus] = useState(null);
 
   const handleStart = () => {
@@ -75,6 +75,7 @@ const WelcomePage = ({ setAppState, creatorName, setCreatorName }) => {
       <button
         className={tailwindClasses.buttonPrimary}
         onClick={handleStart}
+        disabled={!isAppReady}
       >
         Start
       </button>
@@ -83,7 +84,7 @@ const WelcomePage = ({ setAppState, creatorName, setCreatorName }) => {
 };
 
 // Component for the second step: adjective selection
-const Creator = ({ setAppState, setWindowId, creatorName }) => {
+const Creator = ({ setAppState, setWindowId, creatorName, isAppReady }) => {
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
   const [submissionStatus, setSubmissionStatus] = useState(null);
 
@@ -140,7 +141,7 @@ const Creator = ({ setAppState, setWindowId, creatorName }) => {
       <button
         className={tailwindClasses.buttonPrimary}
         onClick={handleCreateNewWindow}
-        disabled={selectedAdjectives.length === 0}
+        disabled={!isAppReady || selectedAdjectives.length === 0}
       >
         Create My Window
       </button>
@@ -149,7 +150,7 @@ const Creator = ({ setAppState, setWindowId, creatorName }) => {
 };
 
 // Component for giving feedback
-const FeedbackProvider = ({ windowId, creatorName, setAppState }) => {
+const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady }) => {
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
   const firebaseContext = React.useContext(FirebaseContext);
   const db = firebaseContext.db;
@@ -199,7 +200,7 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState }) => {
       <button
         className={tailwindClasses.buttonPrimary}
         onClick={handleSubmitFeedback}
-        disabled={selectedAdjectives.length === 0}
+        disabled={!isAppReady || selectedAdjectives.length === 0}
       >
         Submit Feedback
       </button>
@@ -208,7 +209,7 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState }) => {
 };
 
 // Component to display the creator's window
-const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId }) => {
+const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAppReady }) => {
   const [copyButtonText, setCopyButtonText] = useState("Copy Link");
 
   // Function to copy link and provide feedback
@@ -319,7 +320,8 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isAppReady, setIsAppReady] = useState(false);
+  const [appError, setAppError] = useState(null);
 
   // Parse URL for existing windowId
   useEffect(() => {
@@ -339,7 +341,7 @@ export default function App() {
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 
         if (!Object.keys(firebaseConfig).length) {
-          throw new Error("Firebase config is missing.");
+          throw new Error("Firebase configuration is missing. The app cannot function without it.");
         }
 
         const app = initializeApp(firebaseConfig, appId);
@@ -358,17 +360,19 @@ export default function App() {
         onAuthStateChanged(authService, (user) => {
           if (user) {
             setUserId(user.uid);
-            setIsAuthReady(true);
-            setDebugInfo(prev => ({ ...prev, userId: user.uid, message: "User signed in." }));
+            setIsAppReady(true);
+            setDebugInfo(prev => ({ ...prev, userId: user.uid, message: "User signed in. App ready." }));
           } else {
             setUserId(null);
-            setIsAuthReady(true);
-            setDebugInfo(prev => ({ ...prev, userId: null, message: "No user signed in." }));
+            setIsAppReady(true);
+            setDebugInfo(prev => ({ ...prev, userId: null, message: "No user signed in. App ready." }));
           }
         });
       } catch (e) {
         console.error("Firebase initialization failed:", e);
+        setAppError(e.message);
         setDebugInfo(prev => ({ ...prev, error: e.message, message: "Firebase init failed." }));
+        setIsAppReady(false); // Make sure to set ready to false on error
       }
     };
 
@@ -379,7 +383,7 @@ export default function App() {
 
   // Firestore Data Listener for creator's window
   useEffect(() => {
-    if (!db || !windowId || !isAuthReady || appState !== 'windowCreated') return;
+    if (!db || !windowId || !isAppReady || appState !== 'windowCreated') return;
 
     const unsub = onSnapshot(doc(db, "windows", windowId), (docSnap) => {
       if (docSnap.exists()) {
@@ -392,7 +396,7 @@ export default function App() {
     });
 
     return () => unsub();
-  }, [db, windowId, isAuthReady, appState]);
+  }, [db, windowId, isAppReady, appState]);
 
   // Fetch creator's name for feedback page
   useEffect(() => {
@@ -416,6 +420,31 @@ export default function App() {
 
   // Determine which component to render
   const renderContent = () => {
+    if (appError) {
+      return (
+        <>
+          <h1 className={tailwindClasses.heading}>Application Error</h1>
+          <p className={`${tailwindClasses.subheading} text-red-500 font-semibold`}>
+            {appError}
+          </p>
+          <p className={tailwindClasses.subheading}>
+            Please check the debug log for more details.
+          </p>
+        </>
+      );
+    }
+
+    if (!isAppReady) {
+      return (
+        <>
+          <h1 className={tailwindClasses.heading}>Loading...</h1>
+          <p className={tailwindClasses.subheading}>
+            Initializing application. Please wait.
+          </p>
+        </>
+      );
+    }
+
     switch (appState) {
       case 'home':
         return (
@@ -423,6 +452,7 @@ export default function App() {
             setAppState={setAppState}
             creatorName={creatorName}
             setCreatorName={setCreatorName}
+            isAppReady={isAppReady}
           />
         );
       case 'creatorAdjectiveSelection':
@@ -431,6 +461,7 @@ export default function App() {
             setAppState={setAppState}
             setWindowId={setWindowId}
             creatorName={creatorName}
+            isAppReady={isAppReady}
           />
         );
       case 'feedback':
@@ -439,6 +470,7 @@ export default function App() {
             windowId={windowId}
             creatorName={creatorName}
             setAppState={setAppState}
+            isAppReady={isAppReady}
           />
         );
       case 'error':
@@ -460,6 +492,7 @@ export default function App() {
                 windowData={windowData}
                 setAppState={setAppState}
                 setWindowId={setWindowId}
+                isAppReady={isAppReady}
               />
             ) : (
               <div>
