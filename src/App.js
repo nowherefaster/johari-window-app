@@ -342,23 +342,23 @@ export default function App() {
   useEffect(() => {
     const initializeFirebase = async () => {
       try {
-        const currentAppId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
+        const currentAppId = typeof __app_id !== 'undefined' ? __app_id : null;
         setAppId(currentAppId);
-
+        
         let firebaseConfig = {};
+        const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
 
-        const firebaseConfigString = typeof process.env.REACT_APP_FIREBASE_CONFIG !== 'undefined'
-          ? process.env.REACT_APP_FIREBASE_CONFIG
-          : (typeof __firebase_config !== 'undefined' ? __firebase_config : '');
+        if (!currentAppId) {
+          setAppError("The application ID is missing. Cannot initialize Firebase.");
+          return;
+        }
 
         if (firebaseConfigString) {
           try {
             firebaseConfig = JSON.parse(firebaseConfigString);
           } catch (e) {
-            console.error("Failed to parse Firebase config JSON:", e);
             setAppError("Firebase configuration is malformed. Check the JSON syntax.");
             setDebugInfo(prev => ({ ...prev, error: e.message, message: "Firebase init failed due to malformed JSON." }));
-            setIsAppReady(false);
             return;
           }
         }
@@ -366,10 +366,9 @@ export default function App() {
         if (!firebaseConfig || !firebaseConfig.projectId) {
           setAppError("Firebase configuration is invalid. The 'projectId' is missing.");
           setDebugInfo(prev => ({ ...prev, error: "'projectId' not provided in firebase.initializeApp.", message: "Firebase init failed." }));
-          setIsAppReady(false);
           return;
         }
-
+        
         const app = initializeApp(firebaseConfig, currentAppId);
         const firestore = getFirestore(app);
         const authService = getAuth(app);
