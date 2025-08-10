@@ -84,7 +84,7 @@ const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) =
 };
 
 // Component for the second step: adjective selection
-const Creator = ({ setAppState, setWindowId, creatorName, isAppReady }) => {
+const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, userId }) => {
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
   const [submissionStatus, setSubmissionStatus] = useState(null);
 
@@ -98,10 +98,13 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady }) => {
     }
 
     try {
-      const docRef = await addDoc(collection(db, "windows"), {
+      // Use the correct Firestore path for public data
+      const windowsCollection = collection(db, "artifacts", appId, "public", "data", "windows");
+      const docRef = await addDoc(windowsCollection, {
         creatorName: creatorName,
         selfSelections: selectedAdjectives,
         feedback: {},
+        creatorId: userId, // Store the creator's user ID
         createdAt: new Date()
       });
       setWindowId(docRef.id);
@@ -150,7 +153,7 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady }) => {
 };
 
 // Component for giving feedback
-const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady }) => {
+const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appId }) => {
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
   const firebaseContext = React.useContext(FirebaseContext);
   const db = firebaseContext.db;
@@ -163,7 +166,8 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady }) =>
 
   const handleSubmitFeedback = async () => {
     try {
-      const docRef = doc(db, "windows", windowId);
+      // Use the correct Firestore path
+      const docRef = doc(db, "artifacts", appId, "public", "data", "windows", windowId);
       // Retrieve the current feedback
       const windowDoc = await getDoc(docRef);
       const currentFeedback = windowDoc.data().feedback || {};
@@ -322,6 +326,7 @@ export default function App() {
   const [userId, setUserId] = useState(null);
   const [isAppReady, setIsAppReady] = useState(false);
   const [appError, setAppError] = useState(null);
+  const [appId, setAppId] = useState(null);
 
   // Parse URL for existing windowId
   useEffect(() => {
@@ -337,11 +342,11 @@ export default function App() {
   useEffect(() => {
     const initializeFirebase = async () => {
       try {
-        // Use React environment variable convention first, then fall back
-        const appId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
+        const currentAppId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
+        setAppId(currentAppId);
+
         let firebaseConfig = {};
 
-        // Use React environment variable convention first, then fall back
         const firebaseConfigString = typeof process.env.REACT_APP_FIREBASE_CONFIG !== 'undefined'
           ? process.env.REACT_APP_FIREBASE_CONFIG
           : (typeof __firebase_config !== 'undefined' ? __firebase_config : '');
@@ -365,13 +370,12 @@ export default function App() {
           return;
         }
 
-        const app = initializeApp(firebaseConfig, appId);
+        const app = initializeApp(firebaseConfig, currentAppId);
         const firestore = getFirestore(app);
         const authService = getAuth(app);
         setDb(firestore);
         setAuth(authService);
 
-        // Sign in with custom token if available, otherwise anonymously
         if (typeof __initial_auth_token !== 'undefined') {
           await signInWithCustomToken(authService, __initial_auth_token);
         } else {
@@ -382,11 +386,11 @@ export default function App() {
           if (user) {
             setUserId(user.uid);
             setIsAppReady(true);
-            setDebugInfo(prev => ({ ...prev, userId: user.uid, message: "User signed in. App ready." }));
+            setDebugInfo(prev => ({ ...prev, appId: currentAppId, userId: user.uid, message: "User signed in. App ready." }));
           } else {
             setUserId(null);
             setIsAppReady(true);
-            setDebugInfo(prev => ({ ...prev, userId: null, message: "No user signed in. App ready." }));
+            setDebugInfo(prev => ({ ...prev, appId: currentAppId, userId: null, message: "No user signed in. App ready." }));
           }
         });
       } catch (e) {
@@ -404,9 +408,9 @@ export default function App() {
 
   // Firestore Data Listener for creator's window
   useEffect(() => {
-    if (!db || !windowId || !isAppReady || appState !== 'windowCreated') return;
+    if (!db || !windowId || !isAppReady || appState !== 'windowCreated' || !appId) return;
 
-    const unsub = onSnapshot(doc(db, "windows", windowId), (docSnap) => {
+    const unsub = onSnapshot(doc(db, "artifacts", appId, "public", "data", "windows", windowId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setWindowData(data);
@@ -417,14 +421,14 @@ export default function App() {
     });
 
     return () => unsub();
-  }, [db, windowId, isAppReady, appState]);
+  }, [db, windowId, isAppReady, appState, appId]);
 
   // Fetch creator's name for feedback page
   useEffect(() => {
-    if (!db || !windowId || appState !== 'feedback') return;
+    if (!db || !windowId || appState !== 'feedback' || !appId) return;
 
     const fetchCreatorName = async () => {
-      const docRef = doc(db, "windows", windowId);
+      const docRef = doc(db, "artifacts", appId, "public", "data", "windows", windowId);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         setCreatorName(docSnap.data().creatorName);
@@ -436,7 +440,7 @@ export default function App() {
     };
 
     fetchCreatorName();
-  }, [db, windowId, appState]);
+  }, [db, windowId, appState, appId]);
 
 
   // Determine which component to render
@@ -483,6 +487,8 @@ export default function App() {
             setWindowId={setWindowId}
             creatorName={creatorName}
             isAppReady={isAppReady}
+            appId={appId}
+            userId={userId}
           />
         );
       case 'feedback':
@@ -492,6 +498,7 @@ export default function App() {
             creatorName={creatorName}
             setAppState={setAppState}
             isAppReady={isAppReady}
+            appId={appId}
           />
         );
       case 'error':
