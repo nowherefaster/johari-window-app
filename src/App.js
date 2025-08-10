@@ -168,7 +168,7 @@ export default function App() {
   // PHASE 3: Set up listeners and determine page state based on window and feedback data
   useEffect(() => {
     if (!db || !userId || !windowId || !creatorId) {
-      updateDebug('phase3_status', 'Waiting for DB, userId, windowId, and creatorId to be available for feedback listener...');
+      updateDebug('phase3_status', 'Waiting for DB, userId, windowId, and creatorId to be available...');
       return;
     }
     
@@ -199,6 +199,7 @@ export default function App() {
           } else {
             setPage('assess');
           }
+          setLoading(false);
         }
         
       } else {
@@ -238,6 +239,13 @@ export default function App() {
       const q = query(feedbackCollectionRef, where('submittedBy', '==', userId));
       unsubscribeFeedback = onSnapshot(q, (querySnap) => {
         updateDebug('onSnapshot_feedback_teammate', 'Teammate feedback snapshot fired.');
+        
+        // Wait for creatorName to be set before deciding on the page
+        if (!creatorName) {
+            updateDebug('creatorName_not_set', 'Waiting for creatorName from window doc...');
+            return;
+        }
+
         if (!querySnap.empty) {
           const docSnap = querySnap.docs[0];
           setSelectedAdjectives(docSnap.data().adjectives);
@@ -258,7 +266,7 @@ export default function App() {
         unsubscribeFeedback();
       }
     };
-  }, [db, userId, windowId, creatorId, isSelfAssessment]);
+  }, [db, userId, windowId, creatorId, isSelfAssessment, creatorName]);
 
   const handleStartNewWindow = async () => {
     if (!db || !userId) {
