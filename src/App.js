@@ -1,7 +1,7 @@
 import React, { useState, useEffect, createContext } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, getDoc } from 'firebase/firestore';
+import { getFirestore, doc, onSnapshot, collection, addDoc, updateDoc, getDoc } from 'firebase/firestore';
 
 // Define the Firebase context to pass services to components
 const FirebaseContext = createContext(null);
@@ -98,8 +98,8 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
     }
 
     try {
-      // Use a fixed path for public data since appId is not available in Vercel
-      const windowsCollection = collection(db, "windows");
+      // FIX: Use the correct collection path that matches the Firestore security rules.
+      const windowsCollection = collection(db, `artifacts/${appId}/public/data/windows`);
       const docRef = await addDoc(windowsCollection, {
         creatorName: creatorName,
         selfSelections: selectedAdjectives,
@@ -132,7 +132,7 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
           {submissionStatus.message}
         </div>
       )}
-      <div className={tailwindClasses.adjectiveContainer}>
+      <div classNameрование={tailwindClasses.adjectiveContainer}>
         {adjectives.map((adj) => (
           <button
             key={adj}
@@ -155,7 +155,7 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
 };
 
 // Component for giving feedback
-const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, setDebugInfo }) => {
+const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appId, setDebugInfo }) => {
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
   const firebaseContext = React.useContext(FirebaseContext);
   const db = firebaseContext.db;
@@ -168,13 +168,10 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, setD
 
   const handleSubmitFeedback = async () => {
     try {
-      // Use a fixed path for public data since appId is not available in Vercel
-      const docRef = doc(db, "windows", windowId);
-      // Retrieve the current feedback
+      const docRef = doc(db, `artifacts/${appId}/public/data/windows`, windowId);
       const windowDoc = await getDoc(docRef);
       const currentFeedback = windowDoc.data().feedback || {};
 
-      // Use a timestamp or unique ID for the feedback entry to allow multiple submissions from the same user
       const feedbackId = new Date().toISOString();
       const newFeedback = {
         ...currentFeedback,
@@ -329,7 +326,9 @@ export default function App() {
   const [userId, setUserId] = useState(null);
   const [isAppReady, setIsAppReady] = useState(false);
   const [appError, setAppError] = useState(null);
+  const [appId, setAppId] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
+
 
   // Parse URL for existing windowId
   useEffect(() => {
@@ -347,10 +346,12 @@ export default function App() {
       try {
         // Retrieve and parse the Firebase config from the Vercel environment variable
         const firebaseConfigString = process.env.REACT_APP_FIREBASE_CONFIG;
+        const appIdString = process.env.__app_id;
         let firebaseConfig = {};
 
         if (!firebaseConfigString) {
           setAppError("Firebase configuration is missing. Please set the REACT_APP_FIREBASE_CONFIG environment variable.");
+          setDebugInfo(prev => ({...prev, error: "REACT_APP_FIREBASE_CONFIG is missing."}));
           return;
         }
 
@@ -367,25 +368,30 @@ export default function App() {
           setDebugInfo(prev => ({...prev, error: "'projectId' not provided in firebase.initializeApp.", message: "Firebase init failed."}));
           return;
         }
-        
+
+        if (appIdString) {
+          setAppId(appIdString);
+        } else {
+          setAppId('default-app-id');
+        }
+
         const app = initializeApp(firebaseConfig);
         const firestore = getFirestore(app);
         const authService = getAuth(app);
         setDb(firestore);
         setAuth(authService);
-        
-        // Sign in anonymously, as per the original design
+
         await signInAnonymously(authService);
 
         onAuthStateChanged(authService, (user) => {
           if (user) {
             setUserId(user.uid);
             setIsAppReady(true);
-            setDebugInfo(prev => ({...prev, userId: user.uid, message: "User signed in. App ready."}));
+            setDebugInfo(prev => ({...prev, userId: user.uid, appId: appIdString || 'default-app-id', message: "User signed in. App ready."}));
           } else {
             setUserId(null);
             setIsAppReady(true);
-            setDebugInfo(prev => ({...prev, userId: null, message: "No user signed in. App ready."}));
+            setDebugInfo(prev => ({...prev, userId: null, appId: appIdString || 'default-app-id', message: "No user signed in. App ready."}));
           }
         });
       } catch (e) {
@@ -403,10 +409,9 @@ export default function App() {
 
   // Firestore Data Listener for creator's window
   useEffect(() => {
-    if (!db || !windowId || !isAppReady || appState !== 'windowCreated') return;
+    if (!db || !windowId || !isAppReady || appState !== 'windowCreated' || !appId) return;
 
-    // The collection path is fixed since we're not using the special canvas environment path
-    const unsub = onSnapshot(doc(db, "windows", windowId), (docSnap) => {
+    const unsub = onSnapshot(doc(db, `artifacts/${appId}/public/data/windows`, windowId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setWindowData(data);
@@ -414,15 +419,14 @@ export default function App() {
     });
 
     return () => unsub();
-  }, [db, windowId, isAppReady, appState]);
+  }, [db, windowId, isAppReady, appState, appId]);
 
   // Fetch creator's name for feedback page
   useEffect(() => {
-    if (!db || !windowId || appState !== 'feedback') return;
+    if (!db || !windowId || appState !== 'feedback' || !appId) return;
 
     const fetchCreatorName = async () => {
-      // The collection path is fixed since we're not using the special canvas environment path
-      const docRef = doc(db, "windows", windowId);
+      const docRef = doc(db, `artifacts/${appId}/public/data/windows`, windowId);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         setCreatorName(docSnap.data().creatorName);
@@ -433,10 +437,9 @@ export default function App() {
     };
 
     fetchCreatorName();
-  }, [db, windowId, appState]);
+  }, [db, windowId, appState, appId]);
 
 
-  // Determine which component to render
   const renderContent = () => {
     if (appError) {
       return (
@@ -481,6 +484,7 @@ export default function App() {
             creatorName={creatorName}
             isAppReady={isAppReady}
             userId={userId}
+            appId={appId}
             setDebugInfo={setDebugInfo}
           />
         );
@@ -491,6 +495,7 @@ export default function App() {
             creatorName={creatorName}
             setAppState={setAppState}
             isAppReady={isAppReady}
+            appId={appId}
             setDebugInfo={setDebugInfo}
           />
         );
