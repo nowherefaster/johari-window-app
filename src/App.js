@@ -245,7 +245,6 @@ export default function App() {
     setLoading(true);
     try {
       const newWindowId = generateUniqueId();
-      // Use the provided app ID from the environment.
       let appId;
       try {
         appId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -262,14 +261,16 @@ export default function App() {
       });
       updateDebug('new_window_created', `Successfully created new window with ID: ${newWindowId}`);
       updateDebug('new_window_path', `/artifacts/${appId}/users/${userId}/windows/${newWindowId}`);
-
-      setWindowId(newWindowId);
-      setIsSelfAssessment(true);
-      setCreatorId(userId);
-      setPage('assess');
+      
       const newShareLink = `${window.location.origin}${window.location.pathname}?id=${newWindowId}&mode=feedback&creatorId=${userId}`;
+      setWindowId(newWindowId);
+      setCreatorId(userId);
       setShareLink(newShareLink);
-      updateDebug('new_share_link_set', newShareLink);
+      setIsSelfAssessment(true);
+
+      // Update the URL in the browser without reloading the page
+      window.history.pushState({}, '', newShareLink);
+      
     } catch (e) {
       console.error("Error starting new window:", e);
       setError("Failed to start a new window. Please try again. The error was: " + e.message);
@@ -293,7 +294,6 @@ export default function App() {
     if (!db || !windowId || !userId || !creatorId) return;
     setLoading(true);
     try {
-      // Use the provided app ID from the environment.
       let appId;
       try {
         appId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -307,9 +307,7 @@ export default function App() {
           selfAssessment: selectedAdjectives,
         });
         updateDebug('assessment_saved', `Self-assessment saved with ${selectedAdjectives.length} adjectives.`);
-        // Note: We no longer manually set the page to 'results' here.
-        // The onSnapshot listener in the useEffect hook will detect the
-        // database change and automatically update the page state.
+        setPage('results'); // Manually set page to results for a seamless transition
       } else {
         const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
         await addDoc(feedbackCollectionRef, {
@@ -318,7 +316,7 @@ export default function App() {
           submittedAt: new Date(),
         });
         updateDebug('assessment_saved', 'Feedback submitted.');
-        setPage('results'); // Peer feedback submitters can go to a results page
+        setPage('results');
       }
     } catch (e) {
       console.error("Error saving assessment:", e);
