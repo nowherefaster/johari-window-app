@@ -19,9 +19,8 @@ const tailwindClasses = {
   linkInput: "flex-grow p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-mono text-sm",
   copyButton: "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 whitespace-nowrap",
   copyButtonFeedback: "bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md whitespace-nowrap",
-  feedbackContainer: "mt-4 p-4 rounded-lg",
-  successFeedback: "bg-green-100 text-green-700",
-  errorFeedback: "bg-red-100 text-red-700",
+  snackbar: "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full text-white font-bold shadow-lg transition-transform duration-300 ease-in-out transform",
+  snackbarError: "bg-red-500",
   adjectiveContainer: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-6",
   adjectiveButton: "py-2 px-4 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out",
   adjectiveButtonSelected: "py-2 px-4 rounded-full border-2 border-indigo-600 bg-indigo-50 text-indigo-700 font-bold",
@@ -45,12 +44,10 @@ const adjectives = [
 ];
 
 // Component for the welcome page with name input
-const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) => {
-  const [submissionStatus, setSubmissionStatus] = useState(null);
-
+const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady, setSnackbarMessage }) => {
   const handleStart = () => {
     if (!creatorName) {
-      setSubmissionStatus({ type: 'error', message: "Please enter your name to begin." });
+      setSnackbarMessage({ type: 'error', message: "Please enter your name to begin." });
       return;
     }
     setAppState('creatorAdjectiveSelection');
@@ -67,11 +64,6 @@ const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) =
         value={creatorName}
         onChange={(e) => setCreatorName(e.target.value)}
       />
-      {submissionStatus && (
-        <div className={`${tailwindClasses.feedbackContainer} ${submissionStatus.type === 'error' ? tailwindClasses.errorFeedback : tailwindClasses.successFeedback}`}>
-          {submissionStatus.message}
-        </div>
-      )}
       <button
         className={tailwindClasses.buttonPrimary}
         onClick={handleStart}
@@ -84,17 +76,15 @@ const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) =
 };
 
 // Component for the second step: adjective selection (now also handles editing)
-const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, userId, setDebugInfo, windowData, windowId }) => {
+const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, userId, setDebugInfo, windowData, windowId, setSnackbarMessage }) => {
   const [selectedAdjectives, setSelectedAdjectives] = useState(windowData?.selfSelections || []);
-  const [submissionStatus, setSubmissionStatus] = useState(null);
-
   const firebaseContext = React.useContext(FirebaseContext);
   const db = firebaseContext.db;
   const MAX_SELECTIONS = 5;
 
   const handleSaveSelections = async () => {
     if (selectedAdjectives.length === 0) {
-      setSubmissionStatus({ type: 'error', message: "Please select at least one adjective." });
+      setSnackbarMessage({ type: 'error', message: "Please select at least one adjective." });
       return;
     }
 
@@ -121,7 +111,7 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
       }
     } catch (e) {
       console.error("Error saving document: ", e);
-      setSubmissionStatus({ type: 'error', message: "Failed to save selections. Please try again." });
+      setSnackbarMessage({ type: 'error', message: "Failed to save selections. Please try again." });
       setDebugInfo(prev => ({...prev, error: e.message, message: "Firestore write failed in handleSaveSelections."}));
     }
   };
@@ -130,14 +120,14 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
     setSelectedAdjectives(prev => {
       const isSelected = prev.includes(adj);
       if (isSelected) {
-        setSubmissionStatus(null);
+        setSnackbarMessage(null);
         return prev.filter(a => a !== adj);
       } else {
         if (prev.length < MAX_SELECTIONS) {
-          setSubmissionStatus(null);
+          setSnackbarMessage(null);
           return [...prev, adj];
         } else {
-          setSubmissionStatus({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+          setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
           return prev;
         }
       }
@@ -148,11 +138,6 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
     <>
       <h1 className={tailwindClasses.heading}>{windowId ? 'Edit Your Selections' : `Hello, ${creatorName}!`}</h1>
       <p className={tailwindClasses.subheading}>Now, select the five adjectives you feel best describe you.</p>
-      {submissionStatus && (
-        <div className={`${tailwindClasses.feedbackContainer} ${submissionStatus.type === 'error' ? tailwindClasses.errorFeedback : tailwindClasses.successFeedback}`}>
-          {submissionStatus.message}
-        </div>
-      )}
       <div className={tailwindClasses.adjectiveContainer}>
         {adjectives.map((adj) => (
           <button
@@ -177,10 +162,8 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
 };
 
 // Component for giving feedback
-const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appId, setDebugInfo }) => {
+const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appId, setDebugInfo, setSnackbarMessage }) => {
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
-  const [submissionStatus, setSubmissionStatus] = useState(null);
-
   const firebaseContext = React.useContext(FirebaseContext);
   const db = firebaseContext.db;
   const MAX_SELECTIONS = 5;
@@ -189,14 +172,14 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
     setSelectedAdjectives(prev => {
       const isSelected = prev.includes(adj);
       if (isSelected) {
-        setSubmissionStatus(null);
+        setSnackbarMessage(null);
         return prev.filter(a => a !== adj);
       } else {
         if (prev.length < MAX_SELECTIONS) {
-          setSubmissionStatus(null);
+          setSnackbarMessage(null);
           return [...prev, adj];
         } else {
-          setSubmissionStatus({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+          setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
           return prev;
         }
       }
@@ -228,11 +211,6 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
     <>
       <h1 className={tailwindClasses.heading}>Give Feedback to {creatorName}</h1>
       <p className={tailwindClasses.subheading}>Now, select the five adjectives you feel best describe them.</p>
-      {submissionStatus && (
-        <div className={`${tailwindClasses.feedbackContainer} ${submissionStatus.type === 'error' ? tailwindClasses.errorFeedback : tailwindClasses.successFeedback}`}>
-          {submissionStatus.message}
-        </div>
-      )}
       <div className={tailwindClasses.adjectiveContainer}>
         {adjectives.map((adj) => (
           <button
@@ -380,6 +358,7 @@ export default function App() {
   const [appError, setAppError] = useState(null);
   const [appId, setAppId] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
+  const [snackbarMessage, setSnackbarMessage] = useState(null);
 
   const handleCreateNewWindow = () => {
     setWindowId(null);
@@ -390,6 +369,16 @@ export default function App() {
   const handleEditSelections = () => {
     setAppState('creatorAdjectiveSelection');
   };
+
+  useEffect(() => {
+    // Automatically hide the snackbar after a few seconds
+    if (snackbarMessage) {
+      const timer = setTimeout(() => {
+        setSnackbarMessage(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [snackbarMessage]);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -528,6 +517,7 @@ export default function App() {
             creatorName={creatorName}
             setCreatorName={setCreatorName}
             isAppReady={isAppReady}
+            setSnackbarMessage={setSnackbarMessage}
           />
         );
       case 'creatorAdjectiveSelection':
@@ -542,6 +532,7 @@ export default function App() {
             setDebugInfo={setDebugInfo}
             windowData={windowData}
             windowId={windowId}
+            setSnackbarMessage={setSnackbarMessage}
           />
         );
       case 'feedback':
@@ -553,6 +544,7 @@ export default function App() {
             isAppReady={isAppReady}
             appId={appId}
             setDebugInfo={setDebugInfo}
+            setSnackbarMessage={setSnackbarMessage}
           />
         );
       case 'error':
@@ -651,6 +643,11 @@ export default function App() {
             {JSON.stringify(debugInfo, null, 2)}
           </pre>
         </div>
+        {snackbarMessage && (
+            <div className={`${tailwindClasses.snackbar} ${snackbarMessage.type === 'error' ? tailwindClasses.snackbarError : ''}`}>
+                {snackbarMessage.message}
+            </div>
+        )}
       </div>
     </FirebaseContext.Provider>
   );
