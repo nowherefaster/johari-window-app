@@ -70,6 +70,8 @@ export default function App() {
   const [debugInfo, setDebugInfo] = useState({});
   const [hasSubmittedSelfAssessment, setHasSubmittedSelfAssessment] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [creatorName, setCreatorName] = useState('');
+  const [teammateResponseCount, setTeammateResponseCount] = useState(0);
 
   const updateDebug = (key, value) => {
     setDebugInfo(prev => ({ ...prev, [key]: value }));
@@ -208,6 +210,7 @@ export default function App() {
           if (docSnap.exists()) {
             updateDebug('doc_exists', 'Firestore document exists. Fetching data...');
             const data = docSnap.data();
+            setCreatorName(data.creatorName || 'Your'); // Fetch and set the creator's name
             const userSelections = data.selfAssessment || [];
             updateDebug('self_assessment_length', `Self-assessment adjectives: ${userSelections.length}`);
 
@@ -226,6 +229,7 @@ export default function App() {
             
             const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
               updateDebug('onSnapshot_feedback', 'Feedback onSnapshot callback fired.');
+              setTeammateResponseCount(querySnap.size); // Count the number of responses
               const peerSelections = new Set();
               querySnap.forEach(doc => {
                 doc.data().adjectives.forEach(adj => peerSelections.add(adj));
@@ -251,7 +255,15 @@ export default function App() {
         });
         return () => unsubscribeWindow();
       } else if (mode === 'feedback') {
+        const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
+        // Fetch creator name for teammate's page
+        const unsubscribeCreator = onSnapshot(windowRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setCreatorName(docSnap.data().creatorName || 'Your Teammate');
+            }
+        });
         handleTeammateFlow();
+        return () => unsubscribeCreator();
       }
     } else {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
@@ -281,6 +293,7 @@ export default function App() {
         creatorId: userId,
         createdAt: new Date(),
         selfAssessment: [],
+        creatorName: creatorName,
       });
       updateDebug('new_window_created', `Successfully created new window with ID: ${newWindowId}`);
       updateDebug('new_window_path', `/artifacts/${appId}/users/${userId}/windows/${newWindowId}`);
@@ -415,7 +428,18 @@ export default function App() {
           <>
             <h1 className={tailwindClasses.heading}>Discover Your Johari Window</h1>
             <p className={tailwindClasses.subheading}>A simple tool to help you and your team better understand your interpersonal dynamics.</p>
-            <button className={tailwindClasses.buttonPrimary} onClick={handleStartNewWindow} disabled={loading || !userId}>
+            <div className="w-full max-w-sm mt-4">
+              <label htmlFor="creator-name" className="block text-sm font-medium text-gray-700 mb-1 text-left">Your First Name</label>
+              <input
+                id="creator-name"
+                type="text"
+                value={creatorName}
+                onChange={(e) => setCreatorName(e.target.value)}
+                className={tailwindClasses.input}
+                placeholder="e.g., Jane"
+              />
+            </div>
+            <button className={tailwindClasses.buttonPrimary} onClick={handleStartNewWindow} disabled={loading || !userId || creatorName.trim() === ''}>
               Start My Window
             </button>
           </>
@@ -424,7 +448,7 @@ export default function App() {
         return (
           <>
             <h1 className={tailwindClasses.heading}>
-              {isSelfAssessment ? "Select How You See Yourself" : "Select How You See Your Teammate"}
+              {isSelfAssessment ? "Select How You See Yourself" : `Select How You See ${creatorName}`}
             </h1>
             <p className={tailwindClasses.subheading}>
               {isSelfAssessment 
@@ -449,19 +473,23 @@ export default function App() {
           </>
         );
       case 'results':
+        const responsesText = teammateResponseCount === 1 ? 'teammate has responded' : 'teammates have responded';
         return (
           <>
-            <h1 className={tailwindClasses.heading}>Your Johari Window Results</h1>
+            <h1 className={tailwindClasses.heading}>{creatorName}'s Johari Window Results</h1>
             <p className={tailwindClasses.subheading}>
               This is your unique window. Share the link below to get more feedback!
+            </p>
+            <p className="text-md text-gray-600 font-medium mb-4">
+              <span className="text-indigo-600 font-bold">{teammateResponseCount}</span> {responsesText}.
             </p>
             
             <div className={tailwindClasses.linkContainer}>
               <p>Your unique share link:</p>
               <div className={tailwindClasses.link}>{shareLink}</div>
-              <div className="flex items-center justify-center space-x-2 mt-4">
+              <div className="relative flex items-center justify-center mt-4">
                 <button className={tailwindClasses.buttonPrimary} onClick={handleCopyLink}>Copy Link</button>
-                <span className={`text-green-600 font-medium transition-opacity duration-300 ${isCopied ? 'opacity-100' : 'opacity-0'}`}>
+                <span className={`absolute left-full ml-4 text-green-600 font-medium transition-opacity duration-300 whitespace-nowrap ${isCopied ? 'opacity-100' : 'opacity-0'}`}>
                     Copied! ✅
                 </span>
               </div>
