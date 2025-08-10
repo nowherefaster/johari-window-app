@@ -30,6 +30,9 @@ const tailwindClasses = {
   quadrantContainer: "grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-left",
   quadrant: "bg-gray-50 p-4 rounded-lg",
   quadrantTitle: "text-lg font-bold mb-2",
+  debugPanel: "bg-gray-800 text-gray-200 p-4 rounded-lg mt-8 max-w-2xl w-full font-mono text-left text-xs",
+  debugTitle: "text-lg font-bold mb-2 text-white",
+  debugLog: "whitespace-pre-wrap break-all",
 };
 
 const adjectives = [
@@ -81,7 +84,7 @@ const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) =
 };
 
 // Component for the second step: adjective selection
-const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, userId }) => {
+const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, userId, setDebugInfo }) => {
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
   const [submissionStatus, setSubmissionStatus] = useState(null);
 
@@ -106,9 +109,11 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
       });
       setWindowId(docRef.id);
       setAppState('windowCreated');
+      setDebugInfo(prev => ({...prev, message: "Successfully created window in Firestore.", docId: docRef.id}));
     } catch (e) {
       console.error("Error creating document: ", e);
       setSubmissionStatus({ type: 'error', message: "Failed to create a new window. Please try again." });
+      setDebugInfo(prev => ({...prev, error: e.message, message: "Firestore write failed in handleCreateNewWindow."}));
     }
   };
 
@@ -150,7 +155,7 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
 };
 
 // Component for giving feedback
-const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appId }) => {
+const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, setDebugInfo }) => {
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
   const firebaseContext = React.useContext(FirebaseContext);
   const db = firebaseContext.db;
@@ -178,8 +183,10 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
 
       await updateDoc(docRef, { feedback: newFeedback });
       setAppState('submitted');
+      setDebugInfo(prev => ({...prev, message: "Successfully submitted feedback.", docId: windowId}));
     } catch (e) {
       console.error("Error submitting feedback: ", e);
+      setDebugInfo(prev => ({...prev, error: e.message, message: "Firestore write failed in handleSubmitFeedback."}));
     }
   };
 
@@ -322,7 +329,7 @@ export default function App() {
   const [userId, setUserId] = useState(null);
   const [isAppReady, setIsAppReady] = useState(false);
   const [appError, setAppError] = useState(null);
-  const [appId, setAppId] = useState(null);
+  const [debugInfo, setDebugInfo] = useState({});
 
   // Parse URL for existing windowId
   useEffect(() => {
@@ -351,20 +358,17 @@ export default function App() {
           firebaseConfig = JSON.parse(firebaseConfigString);
         } catch (e) {
           setAppError("Firebase configuration is malformed. Check the JSON syntax of REACT_APP_FIREBASE_CONFIG.");
+          setDebugInfo(prev => ({...prev, error: e.message, message: "Firebase init failed due to malformed JSON."}));
           return;
         }
 
         if (!firebaseConfig || !firebaseConfig.projectId) {
           setAppError("Firebase configuration is invalid. The 'projectId' is missing.");
+          setDebugInfo(prev => ({...prev, error: "'projectId' not provided in firebase.initializeApp.", message: "Firebase init failed."}));
           return;
         }
         
-        // A placeholder for appId since it's not a global variable in Vercel.
-        // It's a good practice to use a unique app name.
-        const currentAppId = firebaseConfig.projectId;
-        setAppId(currentAppId);
-
-        const app = initializeApp(firebaseConfig, currentAppId);
+        const app = initializeApp(firebaseConfig);
         const firestore = getFirestore(app);
         const authService = getAuth(app);
         setDb(firestore);
@@ -377,14 +381,17 @@ export default function App() {
           if (user) {
             setUserId(user.uid);
             setIsAppReady(true);
+            setDebugInfo(prev => ({...prev, userId: user.uid, message: "User signed in. App ready."}));
           } else {
             setUserId(null);
             setIsAppReady(true);
+            setDebugInfo(prev => ({...prev, userId: null, message: "No user signed in. App ready."}));
           }
         });
       } catch (e) {
         console.error("Firebase initialization failed:", e);
         setAppError("Failed to initialize Firebase. Check your configuration.");
+        setDebugInfo(prev => ({...prev, error: e.message, message: "Firebase init failed."}));
         setIsAppReady(false);
       }
     };
@@ -473,8 +480,8 @@ export default function App() {
             setWindowId={setWindowId}
             creatorName={creatorName}
             isAppReady={isAppReady}
-            appId={appId}
             userId={userId}
+            setDebugInfo={setDebugInfo}
           />
         );
       case 'feedback':
@@ -484,7 +491,7 @@ export default function App() {
             creatorName={creatorName}
             setAppState={setAppState}
             isAppReady={isAppReady}
-            appId={appId}
+            setDebugInfo={setDebugInfo}
           />
         );
       case 'error':
@@ -578,6 +585,12 @@ export default function App() {
       <div className={tailwindClasses.container}>
         <div className={tailwindClasses.card}>
           {renderContent()}
+        </div>
+        <div className={tailwindClasses.debugPanel}>
+          <h3 className={tailwindClasses.debugTitle}>Debug Log</h3>
+          <pre className={tailwindClasses.debugLog}>
+            {JSON.stringify(debugInfo, null, 2)}
+          </pre>
         </div>
       </div>
     </FirebaseContext.Provider>
