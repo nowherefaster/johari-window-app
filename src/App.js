@@ -8,7 +8,7 @@ const FirebaseContext = createContext(null);
 
 // Tailwind CSS classes for a clean, responsive, and professional look
 const tailwindClasses = {
-  container: "min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 overflow-x-hidden font-inter",
+  container: "min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 overflow-x-hidden",
   card: "bg-white p-8 rounded-lg shadow-xl max-w-2xl w-full text-center space-y-6",
   heading: "text-3xl font-bold text-gray-800",
   subheading: "text-lg text-gray-600",
