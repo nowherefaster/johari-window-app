@@ -190,11 +190,12 @@ export default function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setCreatorName(data.creatorName || 'Your Teammate');
-        
-        // This is the self-assessment list from Firestore, which determines the creator's page state.
         const selfAssessmentFromDb = data.selfAssessment || [];
         
-        // For the creator, if a self-assessment exists, go to results. Otherwise, show the assess page.
+        // This is the creator's self-assessment data.
+        setSelectedAdjectives(selfAssessmentFromDb);
+
+        // Crucial Fix: Set initial page state for creator here.
         if (isSelfAssessment) {
           if (selfAssessmentFromDb.length > 0) {
             setPage('results');
@@ -203,10 +204,7 @@ export default function App() {
           }
         }
         
-        // Always update the selectedAdjectives state from the DB for the creator's self-assessment.
-        setSelectedAdjectives(selfAssessmentFromDb);
-
-        // This is the crucial fix: always set the flag to true once the window doc is loaded
+        // This unblocks the next useEffect for both creator and teammate.
         setIsWindowDataLoaded(true);
       } else {
         const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
@@ -257,7 +255,7 @@ export default function App() {
         setLoading(false);
       }, (error) => {
           console.error("Error with creator feedback onSnapshot:", error);
-          setError(`Error loading feedback: ${error.message}`);
+          setError(`Error loading feedback: ${e.message}`);
           setLoading(false);
       });
     } else {
@@ -276,7 +274,7 @@ export default function App() {
         setLoading(false);
       }, (error) => {
         console.error("Error with teammate feedback onSnapshot:", error);
-        setError(`Error loading feedback: ${error.message}`);
+        setError(`Error loading feedback: ${e.message}`);
         setLoading(false);
       });
     }
