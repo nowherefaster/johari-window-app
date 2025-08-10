@@ -163,49 +163,10 @@ export default function App() {
       }
 
       const isCreator = userId === creatorIdFromUrl;
+      const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
+      updateDebug('firestore_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}`);
 
-      const handleTeammateFlow = async () => {
-        updateDebug('mode_check', 'User is a teammate. Checking for existing feedback.');
-        setIsSelfAssessment(false);
-        const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
-        
-        try {
-          const querySnapshot = await getDocs(feedbackCollectionRef);
-          let existingFeedback = null;
-          querySnapshot.forEach(docSnap => {
-            if (docSnap.data().submittedBy === userId) {
-              existingFeedback = docSnap.data();
-            }
-          });
-
-          if (existingFeedback) {
-            updateDebug('existing_feedback_found', `Found existing feedback for user ${userId}. Redirecting to submitted page.`);
-            setSelectedAdjectives(existingFeedback.adjectives);
-            setPage('submitted');
-          } else {
-            updateDebug('no_existing_feedback', `No existing feedback found for user ${userId}. Redirecting to assessment page.`);
-            setPage('assess');
-          }
-        } catch (e) {
-          console.error("Error fetching feedback:", e);
-          setError("Failed to fetch existing feedback. " + e.message);
-          updateDebug('fetch_feedback_error', e.message);
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      if (isCreator) {
-        updateDebug('mode_check', 'User is the creator. Setting up results listeners.');
-        setIsSelfAssessment(true);
-        const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
-        setShareLink(newShareLink);
-        updateDebug('share_link_set', newShareLink);
- 
-        const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
-        updateDebug('firestore_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}`);
-
-        const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
+      const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
           updateDebug('onSnapshot_window', 'onSnapshot callback fired for window.');
           if (docSnap.exists()) {
             updateDebug('doc_exists', 'Firestore document exists. Fetching data...');
@@ -214,57 +175,79 @@ export default function App() {
             const userSelections = data.selfAssessment || [];
             updateDebug('self_assessment_length', `Self-assessment adjectives: ${userSelections.length}`);
 
-            if (userSelections.length > 0) {
-              setHasSubmittedSelfAssessment(true);
-              setPage('results');
+            if (isCreator) {
+              if (userSelections.length > 0) {
+                setHasSubmittedSelfAssessment(true);
+                setPage('results');
+              } else {
+                setHasSubmittedSelfAssessment(false);
+                setPage('assess');
+              }
+              setLoading(false);
             } else {
-              setHasSubmittedSelfAssessment(false);
-              setPage('assess');
+              setIsSelfAssessment(false);
+              const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
+              getDocs(feedbackCollectionRef).then(querySnapshot => {
+                  let existingFeedback = null;
+                  querySnapshot.forEach(docSnap => {
+                    if (docSnap.data().submittedBy === userId) {
+                      existingFeedback = docSnap.data();
+                    }
+                  });
+        
+                  if (existingFeedback) {
+                    setSelectedAdjectives(existingFeedback.adjectives);
+                    setPage('submitted');
+                  } else {
+                    setPage('assess');
+                  }
+                  setLoading(false);
+              }).catch(e => {
+                  console.error("Error fetching feedback:", e);
+                  setError("Failed to fetch existing feedback. " + e.message);
+                  updateDebug('fetch_feedback_error', e.message);
+                  setLoading(false);
+              });
             }
             
-            setLoading(false);
+            if (isCreator) {
+              const feedbackRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
+              updateDebug('feedback_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
+              
+              const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
+                updateDebug('onSnapshot_feedback', 'Feedback onSnapshot callback fired.');
+                setTeammateResponseCount(querySnap.size); // Count the number of responses
+                const peerSelections = new Set();
+                querySnap.forEach(doc => {
+                  doc.data().adjectives.forEach(adj => peerSelections.add(adj));
+                });
+                updateDebug('peer_selections_count', peerSelections.size);
 
-            const feedbackRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
-            updateDebug('feedback_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
-            
-            const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
-              updateDebug('onSnapshot_feedback', 'Feedback onSnapshot callback fired.');
-              setTeammateResponseCount(querySnap.size); // Count the number of responses
-              const peerSelections = new Set();
-              querySnap.forEach(doc => {
-                doc.data().adjectives.forEach(adj => peerSelections.add(adj));
+                const arena = userSelections.filter(adj => peerSelections.has(adj));
+                const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
+                const facade = userSelections.filter(adj => !peerSelections.has(adj));
+                const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
+
+                setResults({ arena, blindSpot, facade, unknown });
+                updateDebug('results_calculated', 'Johari Window results calculated.');
               });
-              updateDebug('peer_selections_count', peerSelections.size);
-
-              const arena = userSelections.filter(adj => peerSelections.has(adj));
-              const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
-              const facade = userSelections.filter(adj => !peerSelections.has(adj));
-              const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
-
-              setResults({ arena, blindSpot, facade, unknown });
-              updateDebug('results_calculated', 'Johari Window results calculated.');
-            });
+              
+              return () => unsubscribeFeedback();
+            }
             
-            return () => unsubscribeFeedback();
           } else {
               const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
               setError(errorMessage);
               updateDebug('doc_exists', errorMessage);
               setLoading(false);
           }
-        });
-        return () => unsubscribeWindow();
-      } else if (mode === 'feedback') {
-        const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
-        // Fetch creator name for teammate's page
-        const unsubscribeCreator = onSnapshot(windowRef, (docSnap) => {
-            if (docSnap.exists()) {
-                setCreatorName(docSnap.data().creatorName || 'Your Teammate');
-            }
-        });
-        handleTeammateFlow();
-        return () => unsubscribeCreator();
-      }
+      });
+      
+      const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
+      setShareLink(newShareLink);
+      updateDebug('share_link_set', newShareLink);
+      
+      return () => unsubscribeWindow();
     } else {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
       setLoading(false);
@@ -428,7 +411,7 @@ export default function App() {
           <>
             <h1 className={tailwindClasses.heading}>Discover Your Johari Window</h1>
             <p className={tailwindClasses.subheading}>A simple tool to help you and your team better understand your interpersonal dynamics.</p>
-            <div className="w-full max-w-sm mt-4">
+            <div className="w-full max-w-sm mt-4 mx-auto">
               <label htmlFor="creator-name" className="block text-sm font-medium text-gray-700 mb-1 text-left">Your First Name</label>
               <input
                 id="creator-name"
@@ -480,9 +463,6 @@ export default function App() {
             <p className={tailwindClasses.subheading}>
               This is your unique window. Share the link below to get more feedback!
             </p>
-            <p className="text-md text-gray-600 font-medium mb-4">
-              <span className="text-indigo-600 font-bold">{teammateResponseCount}</span> {responsesText}.
-            </p>
             
             <div className={tailwindClasses.linkContainer}>
               <p>Your unique share link:</p>
@@ -496,6 +476,10 @@ export default function App() {
               <p>Your User ID for Firestore: {userId}</p>
               <p>Creator's User ID: {creatorId}</p>
             </div>
+            
+            <p className="text-md text-gray-600 font-medium my-4">
+              <span className="text-indigo-600 font-bold">{teammateResponseCount}</span> {responsesText}.
+            </p>
             
             {results && (
               <div className={tailwindClasses.resultsGrid}>
