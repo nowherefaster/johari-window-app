@@ -142,7 +142,7 @@ export default function App() {
     const urlParams = new URLSearchParams(window.location.search);
     const id = urlParams.get('id');
     const creatorIdFromUrl = urlParams.get('creatorId');
-
+    
     if (id && creatorIdFromUrl) {
       updateDebug('url_params', `Found windowId: ${id}, creatorId: ${creatorIdFromUrl}`);
       setWindowId(id);
@@ -234,7 +234,7 @@ export default function App() {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
       setLoading(false);
     }
-  }, [db, userId]);
+  }, [db, userId, windowId, creatorId]); // Added dependencies to trigger on state change
 
   const handleStartNewWindow = async () => {
     if (!db || !userId) {
@@ -262,13 +262,13 @@ export default function App() {
       updateDebug('new_window_created', `Successfully created new window with ID: ${newWindowId}`);
       updateDebug('new_window_path', `/artifacts/${appId}/users/${userId}/windows/${newWindowId}`);
       
-      const newShareLink = `${window.location.origin}${window.location.pathname}?id=${newWindowId}&mode=feedback&creatorId=${userId}`;
+      // Update state directly to trigger the useEffect hook
       setWindowId(newWindowId);
       setCreatorId(userId);
-      setShareLink(newShareLink);
       setIsSelfAssessment(true);
 
-      // Update the URL in the browser without reloading the page
+      const newShareLink = `${window.location.origin}${window.location.pathname}?id=${newWindowId}&mode=feedback&creatorId=${userId}`;
+      setShareLink(newShareLink);
       window.history.pushState({}, '', newShareLink);
       
     } catch (e) {
@@ -307,7 +307,6 @@ export default function App() {
           selfAssessment: selectedAdjectives,
         });
         updateDebug('assessment_saved', `Self-assessment saved with ${selectedAdjectives.length} adjectives.`);
-        setPage('results'); // Manually set page to results for a seamless transition
       } else {
         const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
         await addDoc(feedbackCollectionRef, {
@@ -316,7 +315,6 @@ export default function App() {
           submittedAt: new Date(),
         });
         updateDebug('assessment_saved', 'Feedback submitted.');
-        setPage('results');
       }
     } catch (e) {
       console.error("Error saving assessment:", e);
