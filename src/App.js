@@ -337,12 +337,18 @@ export default function App() {
   useEffect(() => {
     const initializeFirebase = async () => {
       try {
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        
+        // Use React environment variable convention first, then fall back
+        const appId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : (typeof __app_id !== 'undefined' ? __app_id : 'default-app-id');
         let firebaseConfig = {};
-        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+
+        // Use React environment variable convention first, then fall back
+        const firebaseConfigString = typeof process.env.REACT_APP_FIREBASE_CONFIG !== 'undefined'
+          ? process.env.REACT_APP_FIREBASE_CONFIG
+          : (typeof __firebase_config !== 'undefined' ? __firebase_config : '');
+
+        if (firebaseConfigString) {
           try {
-            firebaseConfig = JSON.parse(__firebase_config);
+            firebaseConfig = JSON.parse(firebaseConfigString);
           } catch (e) {
             console.error("Failed to parse Firebase config JSON:", e);
             setAppError("Firebase configuration is malformed. Check the JSON syntax.");
