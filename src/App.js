@@ -126,7 +126,12 @@ export default function App() {
       }
     };
 
-    initFirebase();
+    // A small delay to ensure the environment has time to provide the config
+    const timeout = setTimeout(() => {
+      initFirebase();
+    }, 100);
+
+    return () => clearTimeout(timeout);
   }, []);
 
   // 2. Real-time data fetching with onSnapshot
