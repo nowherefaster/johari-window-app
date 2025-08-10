@@ -24,6 +24,7 @@ const tailwindClasses = {
   adjectiveContainer: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-6",
   adjectiveButton: "py-2 px-4 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out",
   adjectiveButtonSelected: "py-2 px-4 rounded-full border-2 border-indigo-600 bg-indigo-50 text-indigo-700 font-bold",
+  adjectiveButtonInactive: "py-2 px-4 rounded-full border-2 border-gray-200 text-gray-400 bg-gray-100 cursor-not-allowed",
   adjectiveList: "mt-4 text-left p-4 bg-gray-50 rounded-lg",
   adjectiveListItem: "my-1",
   quadrantContainer: "grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-left",
@@ -126,26 +127,27 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
         isAdjectiveSelected: selectedAdjectives.includes(adj)
       }
     }));
-
+    
     const isSelected = selectedAdjectives.includes(adj);
 
-    // If the user is trying to select a new adjective and has reached the max limit, show the error immediately.
+    // If the adjective is not selected and we've reached the max limit, show an error.
     if (!isSelected && selectedAdjectives.length >= MAX_SELECTIONS) {
-        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set' } }));
-        return;
+      setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set' } }));
+      return;
     }
-    
-    // Toggle the adjective
+
     if (isSelected) {
+      // If the adjective is already selected, deselect it.
       const newSelections = selectedAdjectives.filter(a => a !== adj);
       setSelectedAdjectives(newSelections);
-      setSnackbarMessage(null); // Clear message when deselecting
+      setSnackbarMessage(null); // Clear any existing message
       setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Deselecting adjective', newCount: newSelections.length } }));
     } else {
+      // If the adjective is not selected, select it.
       const newSelections = [...selectedAdjectives, adj];
       setSelectedAdjectives(newSelections);
-      setSnackbarMessage(null); // Clear message when selecting
+      setSnackbarMessage(null); // Clear any existing message
       setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selecting new adjective', newCount: newSelections.length } }));
     }
   };
@@ -155,16 +157,27 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
       <h1 className={tailwindClasses.heading}>{windowId ? 'Edit Your Selections' : `Hello, ${creatorName}!`}</h1>
       <p className={tailwindClasses.subheading}>Now, select the five adjectives you feel best describe you.</p>
       <div className={tailwindClasses.adjectiveContainer}>
-        {adjectives.map((adj) => (
-          <button
-            key={adj}
-            className={selectedAdjectives.includes(adj) ? tailwindClasses.adjectiveButtonSelected : tailwindClasses.adjectiveButton}
-            onClick={() => toggleAdjective(adj)}
-            disabled={!selectedAdjectives.includes(adj) && selectedAdjectives.length >= MAX_SELECTIONS}
-          >
-            {adj}
-          </button>
-        ))}
+        {adjectives.map((adj) => {
+          const isSelected = selectedAdjectives.includes(adj);
+          const isInactive = !isSelected && selectedAdjectives.length >= MAX_SELECTIONS;
+          
+          let buttonClassName = tailwindClasses.adjectiveButton;
+          if (isSelected) {
+            buttonClassName = tailwindClasses.adjectiveButtonSelected;
+          } else if (isInactive) {
+            buttonClassName = tailwindClasses.adjectiveButtonInactive;
+          }
+
+          return (
+            <button
+              key={adj}
+              className={buttonClassName}
+              onClick={() => toggleAdjective(adj)}
+            >
+              {adj}
+            </button>
+          );
+        })}
       </div>
       <button
         className={tailwindClasses.buttonPrimary}
@@ -194,26 +207,27 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
         isAdjectiveSelected: selectedAdjectives.includes(adj)
       }
     }));
-
+    
     const isSelected = selectedAdjectives.includes(adj);
 
-    // If the user is trying to select a new adjective and has reached the max limit, show the error immediately.
+    // If the adjective is not selected and we've reached the max limit, show an error.
     if (!isSelected && selectedAdjectives.length >= MAX_SELECTIONS) {
-        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-        setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set (Feedback Provider)' } }));
-        return;
+      setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+      setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Max selections reached, snackbar set (Feedback Provider)' } }));
+      return;
     }
-    
-    // Toggle the adjective
+
     if (isSelected) {
+      // If the adjective is already selected, deselect it.
       const newSelections = selectedAdjectives.filter(a => a !== adj);
       setSelectedAdjectives(newSelections);
-      setSnackbarMessage(null); // Clear message when deselecting
+      setSnackbarMessage(null); // Clear any existing message
       setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Deselecting adjective (Feedback Provider)', newCount: newSelections.length } }));
     } else {
+      // If the adjective is not selected, select it.
       const newSelections = [...selectedAdjectives, adj];
       setSelectedAdjectives(newSelections);
-      setSnackbarMessage(null); // Clear message when selecting
+      setSnackbarMessage(null); // Clear any existing message
       setDebugInfo(prev => ({ ...prev, postClickState: { toggleAction: 'Selecting new adjective (Feedback Provider)', newCount: newSelections.length } }));
     }
   };
@@ -244,16 +258,26 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
       <h1 className={tailwindClasses.heading}>Give Feedback to {creatorName}</h1>
       <p className={tailwindClasses.subheading}>Now, select the five adjectives you feel best describe them.</p>
       <div className={tailwindClasses.adjectiveContainer}>
-        {adjectives.map((adj) => (
-          <button
-            key={adj}
-            className={selectedAdjectives.includes(adj) ? tailwindClasses.adjectiveButtonSelected : tailwindClasses.adjectiveButton}
-            onClick={() => toggleAdjective(adj)}
-            disabled={!selectedAdjectives.includes(adj) && selectedAdjectives.length >= MAX_SELECTIONS}
-          >
-            {adj}
-          </button>
-        ))}
+        {adjectives.map((adj) => {
+          const isSelected = selectedAdjectives.includes(adj);
+          const isInactive = !isSelected && selectedAdjectives.length >= MAX_SELECTIONS;
+
+          let buttonClassName = tailwindClasses.adjectiveButton;
+          if (isSelected) {
+            buttonClassName = tailwindClasses.adjectiveButtonSelected;
+          } else if (isInactive) {
+            buttonClassName = tailwindClasses.adjectiveButtonInactive;
+          }
+          return (
+            <button
+              key={adj}
+              className={buttonClassName}
+              onClick={() => toggleAdjective(adj)}
+            >
+              {adj}
+            </button>
+          );
+        })}
       </div>
       <button
         className={tailwindClasses.buttonPrimary}
