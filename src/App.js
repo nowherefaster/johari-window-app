@@ -355,6 +355,10 @@ export default function App() {
     });
   };
   
+  const handleEditSelfAssessment = () => {
+    setPage('assess');
+  };
+
   const handleUpdateFeedback = () => {
     setPage('assess');
   };
@@ -515,11 +519,15 @@ export default function App() {
             <div className={`${tailwindClasses.linkContainer} items-center`}>
               <p>Your unique share link:</p>
               <div className={tailwindClasses.link}>{shareLink}</div>
-              <div className="flex items-center justify-center mt-4 space-x-4">
-                <button className={tailwindClasses.buttonPrimary} onClick={handleCopyLink}>Copy Link</button>
-                <span className={`text-green-600 font-medium transition-opacity duration-300 whitespace-nowrap ${isCopied ? 'opacity-100' : 'opacity-0'}`}>
-                    Copied! ✅
-                </span>
+              <div className="flex justify-center mt-4">
+                <div className="relative">
+                  <button className={tailwindClasses.buttonPrimary} onClick={handleCopyLink}>Copy Link</button>
+                  {isCopied && (
+                    <span className="absolute left-full ml-4 text-green-600 font-medium whitespace-nowrap animate-fade-in-out">
+                      Copied! ✅
+                    </span>
+                  )}
+                </div>
               </div>
               <p>Your User ID for Firestore: {userId}</p>
               <p>Creator's User ID: {creatorId}</p>
@@ -558,9 +566,16 @@ export default function App() {
               </div>
             )}
             
-            <button className={`${tailwindClasses.buttonSecondary} mt-8`} onClick={handleCreateNewWindow}>
-              Create Another Window
-            </button>
+            {isSelfAssessment && (
+              <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 justify-center mt-8">
+                <button className={tailwindClasses.buttonSecondary} onClick={handleEditSelfAssessment}>
+                  Edit My Selections
+                </button>
+                <button className={tailwindClasses.buttonPrimary} onClick={handleCreateNewWindow}>
+                  Create Another Window
+                </button>
+              </div>
+            )}
           </>
         );
       case 'submitted':
