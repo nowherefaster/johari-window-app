@@ -343,12 +343,23 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
   const selfSelections = windowData?.selfSelections || [];
   const allFeedback = windowData?.feedback || [];
   const feedbackSelections = new Set();
-  const feedbackCounts = {};
   
+  // Combine all selections (creator's and all teammates') into a single list
+  const allSelections = [...selfSelections];
+  allFeedback.forEach(feedbackDoc => {
+      allSelections.push(...feedbackDoc.selections);
+  });
+
+  // Calculate the master count for each adjective
+  const masterCounts = {};
+  allSelections.forEach(adj => {
+      masterCounts[adj] = (masterCounts[adj] || 0) + 1;
+  });
+
+  // Re-calculate the quadrants based on this combined view
   allFeedback.forEach(feedbackDoc => {
       feedbackDoc.selections.forEach(adj => {
           feedbackSelections.add(adj);
-          feedbackCounts[adj] = (feedbackCounts[adj] || 0) + 1;
       });
   });
 
@@ -363,7 +374,7 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
   const renderAdjectiveList = (adjectiveArray) => {
       return adjectiveArray.length > 0 ? (
           adjectiveArray.map(adj => {
-              const count = feedbackCounts[adj] || 0;
+              const count = masterCounts[adj] || 0;
               return (
                   <li key={adj} className={`${tailwindClasses.adjectiveListItem} flex justify-between items-center`}>
                       <span>{adj}</span>
