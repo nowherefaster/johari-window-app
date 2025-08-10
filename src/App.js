@@ -340,10 +340,6 @@ export default function App() {
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 
-        if (!Object.keys(firebaseConfig).length) {
-          throw new Error("Firebase configuration is missing. The app cannot function without it.");
-        }
-
         const app = initializeApp(firebaseConfig, appId);
         const firestore = getFirestore(app);
         const authService = getAuth(app);
@@ -370,9 +366,9 @@ export default function App() {
         });
       } catch (e) {
         console.error("Firebase initialization failed:", e);
-        setAppError(e.message);
+        setAppError("Failed to initialize Firebase. Check your configuration.");
         setDebugInfo(prev => ({ ...prev, error: e.message, message: "Firebase init failed." }));
-        setIsAppReady(false); // Make sure to set ready to false on error
+        setIsAppReady(false);
       }
     };
 
