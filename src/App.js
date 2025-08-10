@@ -141,14 +141,13 @@ export default function App() {
       return;
     }
 
-    setLoading(true);
     updateDebug('phase2_status', `DB and userId (${userId}) are ready. Checking URL...`);
+    setLoading(true);
 
     const urlParams = new URLSearchParams(window.location.search);
     const id = urlParams.get('id');
     const creatorIdFromUrl = urlParams.get('creatorId');
-    const mode = urlParams.get('mode');
-    
+
     if (id && creatorIdFromUrl) {
       updateDebug('url_params', `Found windowId: ${id}, creatorId: ${creatorIdFromUrl}`);
       setWindowId(id);
@@ -161,98 +160,105 @@ export default function App() {
         appId = 'default-app-id';
         updateDebug('app_id_error', 'App ID is not available. Using default.');
       }
-
+      
       const isCreator = userId === creatorIdFromUrl;
+      setIsSelfAssessment(isCreator);
+
       const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
-      updateDebug('firestore_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}`);
+      const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
 
-      const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
-          updateDebug('onSnapshot_window', 'onSnapshot callback fired for window.');
-          if (docSnap.exists()) {
-            updateDebug('doc_exists', 'Firestore document exists. Fetching data...');
-            const data = docSnap.data();
-            setCreatorName(data.creatorName || 'Your'); // Fetch and set the creator's name
-            const userSelections = data.selfAssessment || [];
-            updateDebug('self_assessment_length', `Self-assessment adjectives: ${userSelections.length}`);
+      // Set up the main window listener for both creator and teammate to get the name and self-assessment data.
+      const unsubscribeWindow = onSnapshot(windowRef, async (docSnap) => {
+        updateDebug('onSnapshot_window', 'onSnapshot callback fired for window.');
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setCreatorName(data.creatorName || 'Your Teammate');
+          const userSelections = data.selfAssessment || [];
 
-            if (isCreator) {
-              if (userSelections.length > 0) {
-                setHasSubmittedSelfAssessment(true);
-                setPage('results');
+          if (isCreator) {
+            // Logic for the creator
+            if (userSelections.length > 0) {
+              setHasSubmittedSelfAssessment(true);
+              setPage('results');
+            } else {
+              setHasSubmittedSelfAssessment(false);
+              setPage('assess');
+            }
+          } else {
+            // Logic for the teammate
+            try {
+              const querySnapshot = await getDocs(feedbackCollectionRef);
+              let existingFeedback = null;
+              querySnapshot.forEach(docSnap => {
+                if (docSnap.data().submittedBy === userId) {
+                  existingFeedback = docSnap.data();
+                }
+              });
+              if (existingFeedback) {
+                setSelectedAdjectives(existingFeedback.adjectives);
+                setPage('submitted');
               } else {
-                setHasSubmittedSelfAssessment(false);
                 setPage('assess');
               }
-              setLoading(false);
-            } else {
-              setIsSelfAssessment(false);
-              const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
-              getDocs(feedbackCollectionRef).then(querySnapshot => {
-                  let existingFeedback = null;
-                  querySnapshot.forEach(docSnap => {
-                    if (docSnap.data().submittedBy === userId) {
-                      existingFeedback = docSnap.data();
-                    }
-                  });
-        
-                  if (existingFeedback) {
-                    setSelectedAdjectives(existingFeedback.adjectives);
-                    setPage('submitted');
-                  } else {
-                    setPage('assess');
-                  }
-                  setLoading(false);
-              }).catch(e => {
-                  console.error("Error fetching feedback:", e);
-                  setError("Failed to fetch existing feedback. " + e.message);
-                  updateDebug('fetch_feedback_error', e.message);
-                  setLoading(false);
-              });
+            } catch (e) {
+              console.error("Error fetching feedback:", e);
+              setError("Failed to fetch existing feedback. " + e.message);
+              updateDebug('fetch_feedback_error', e.message);
             }
-            
-            if (isCreator) {
-              const feedbackRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
-              updateDebug('feedback_path', `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
-              
-              const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
-                updateDebug('onSnapshot_feedback', 'Feedback onSnapshot callback fired.');
-                setTeammateResponseCount(querySnap.size); // Count the number of responses
-                const peerSelections = new Set();
-                querySnap.forEach(doc => {
-                  doc.data().adjectives.forEach(adj => peerSelections.add(adj));
-                });
-                updateDebug('peer_selections_count', peerSelections.size);
-
-                const arena = userSelections.filter(adj => peerSelections.has(adj));
-                const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
-                const facade = userSelections.filter(adj => !peerSelections.has(adj));
-                const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
-
-                setResults({ arena, blindSpot, facade, unknown });
-                updateDebug('results_calculated', 'Johari Window results calculated.');
-              });
-              
-              return () => unsubscribeFeedback();
-            }
-            
-          } else {
-              const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
-              setError(errorMessage);
-              updateDebug('doc_exists', errorMessage);
-              setLoading(false);
           }
+          
+          // Regardless of creator/teammate, loading is now complete
+          setLoading(false);
+        } else {
+          // Document does not exist
+          const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
+          setError(errorMessage);
+          updateDebug('doc_exists', errorMessage);
+          setLoading(false);
+        }
+      }, (error) => {
+        // Error handling for onSnapshot
+        console.error("Error with window onSnapshot:", error);
+        setError(`Error: ${error.message}`);
+        setLoading(false);
       });
+
+      // Set up a separate feedback listener ONLY for the creator
+      let unsubscribeFeedback;
+      if (isCreator) {
+        unsubscribeFeedback = onSnapshot(feedbackCollectionRef, (querySnap) => {
+          updateDebug('onSnapshot_feedback', 'Feedback onSnapshot callback fired.');
+          setTeammateResponseCount(querySnap.size);
+          const peerSelections = new Set();
+          querySnap.forEach(doc => {
+            doc.data().adjectives.forEach(adj => peerSelections.add(adj));
+          });
+          const userSelections = results?.facade || []; // Use existing results or an empty array
+          const arena = userSelections.filter(adj => peerSelections.has(adj));
+          const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
+          const facade = userSelections.filter(adj => !peerSelections.has(adj));
+          const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
+          setResults({ arena, blindSpot, facade, unknown });
+        }, (error) => {
+            console.error("Error with feedback onSnapshot:", error);
+        });
+      }
       
       const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
       setShareLink(newShareLink);
       updateDebug('share_link_set', newShareLink);
       
-      return () => unsubscribeWindow();
+      return () => {
+        unsubscribeWindow();
+        if (unsubscribeFeedback) {
+          unsubscribeFeedback();
+        }
+      };
     } else {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
       setLoading(false);
     }
-  }, [db, userId, windowId, creatorId]);
+  }, [db, userId]);
 
   const handleStartNewWindow = async () => {
     if (!db || !userId) {
