@@ -117,21 +117,19 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
   };
 
   const toggleAdjective = (adj) => {
-    setSelectedAdjectives(prev => {
-      const isSelected = prev.includes(adj);
-      if (isSelected) {
-        setSnackbarMessage(null);
-        return prev.filter(a => a !== adj);
+    const isSelected = selectedAdjectives.includes(adj);
+    
+    if (isSelected) {
+      setSelectedAdjectives(selectedAdjectives.filter(a => a !== adj));
+      setSnackbarMessage(null); // Clear message when deselecting
+    } else {
+      if (selectedAdjectives.length < MAX_SELECTIONS) {
+        setSelectedAdjectives([...selectedAdjectives, adj]);
+        setSnackbarMessage(null); // Clear message when selecting
       } else {
-        if (prev.length < MAX_SELECTIONS) {
-          setSnackbarMessage(null);
-          return [...prev, adj];
-        } else {
-          setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-          return prev;
-        }
+        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
       }
-    });
+    }
   };
 
   return (
@@ -169,21 +167,19 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
   const MAX_SELECTIONS = 5;
 
   const toggleAdjective = (adj) => {
-    setSelectedAdjectives(prev => {
-      const isSelected = prev.includes(adj);
-      if (isSelected) {
-        setSnackbarMessage(null);
-        return prev.filter(a => a !== adj);
+    const isSelected = selectedAdjectives.includes(adj);
+
+    if (isSelected) {
+      setSelectedAdjectives(selectedAdjectives.filter(a => a !== adj));
+      setSnackbarMessage(null); // Clear message when deselecting
+    } else {
+      if (selectedAdjectives.length < MAX_SELECTIONS) {
+        setSelectedAdjectives([...selectedAdjectives, adj]);
+        setSnackbarMessage(null); // Clear message when selecting
       } else {
-        if (prev.length < MAX_SELECTIONS) {
-          setSnackbarMessage(null);
-          return [...prev, adj];
-        } else {
-          setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-          return prev;
-        }
+        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
       }
-    });
+    }
   };
 
   const handleSubmitFeedback = async () => {
