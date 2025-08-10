@@ -343,7 +343,14 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
   const selfSelections = windowData?.selfSelections || [];
   const allFeedback = windowData?.feedback || [];
   const feedbackSelections = new Set();
-  allFeedback.forEach(feedbackDoc => feedbackDoc.selections.forEach(adj => feedbackSelections.add(adj)));
+  const feedbackCounts = {};
+  
+  allFeedback.forEach(feedbackDoc => {
+      feedbackDoc.selections.forEach(adj => {
+          feedbackSelections.add(adj);
+          feedbackCounts[adj] = (feedbackCounts[adj] || 0) + 1;
+      });
+  });
 
   const arena = adjectives.filter(adj => selfSelections.includes(adj) && feedbackSelections.has(adj));
   const blindSpot = adjectives.filter(adj => !selfSelections.includes(adj) && feedbackSelections.has(adj));
@@ -351,6 +358,27 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
   const unknown = adjectives.filter(adj => !selfSelections.includes(adj) && !feedbackSelections.has(adj));
 
   const responsesCount = allFeedback.length;
+
+  // Helper function to render list items with optional count
+  const renderAdjectiveList = (adjectiveArray) => {
+      return adjectiveArray.length > 0 ? (
+          adjectiveArray.map(adj => {
+              const count = feedbackCounts[adj] || 0;
+              return (
+                  <li key={adj} className={`${tailwindClasses.adjectiveListItem} flex justify-between items-center`}>
+                      <span>{adj}</span>
+                      {count > 1 && (
+                          <span className="text-sm font-semibold text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">
+                              {count}
+                          </span>
+                      )}
+                  </li>
+              );
+          })
+      ) : (
+          <p>No adjectives in this quadrant yet.</p>
+      );
+  };
 
   return (
     <>
@@ -379,41 +407,25 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
         <div className={tailwindClasses.quadrant}>
           <h3 className={tailwindClasses.quadrantTitle}>Arena (Open)</h3>
           <ul className={tailwindClasses.adjectiveList}>
-            {arena.length > 0 ? (
-              arena.map(adj => <li key={adj} className={tailwindClasses.adjectiveListItem}>{adj}</li>)
-            ) : (
-              <p>No adjectives in this quadrant yet.</p>
-            )}
+            {renderAdjectiveList(arena)}
           </ul>
         </div>
         <div className={tailwindClasses.quadrant}>
           <h3 className={tailwindClasses.quadrantTitle}>Blind Spot</h3>
           <ul className={tailwindClasses.adjectiveList}>
-            {blindSpot.length > 0 ? (
-              blindSpot.map(adj => <li key={adj} className={tailwindClasses.adjectiveListItem}>{adj}</li>)
-            ) : (
-              <p>No adjectives in this quadrant yet.</p>
-            )}
+            {renderAdjectiveList(blindSpot)}
           </ul>
         </div>
         <div className={tailwindClasses.quadrant}>
           <h3 className={tailwindClasses.quadrantTitle}>Facade (Hidden)</h3>
           <ul className={tailwindClasses.adjectiveList}>
-            {facade.length > 0 ? (
-              facade.map(adj => <li key={adj} className={tailwindClasses.adjectiveListItem}>{adj}</li>)
-            ) : (
-              <p>No adjectives in this quadrant yet.</p>
-            )}
+            {renderAdjectiveList(facade)}
           </ul>
         </div>
         <div className={tailwindClasses.quadrant}>
           <h3 className={tailwindClasses.quadrantTitle}>Unknown</h3>
           <ul className={tailwindClasses.adjectiveList}>
-            {unknown.length > 0 ? (
-              unknown.map(adj => <li key={adj} className={tailwindClasses.adjectiveListItem}>{adj}</li>)
-            ) : (
-              <p>No adjectives in this quadrant yet.</p>
-            )}
+            {renderAdjectiveList(unknown)}
           </ul>
         </div>
       </div>
