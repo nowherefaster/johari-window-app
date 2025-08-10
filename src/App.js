@@ -9,7 +9,7 @@ const FirebaseContext = createContext(null);
 // Tailwind CSS classes for a clean, professional look inspired by Slalom
 const tailwindClasses = {
   container: "min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 overflow-x-hidden font-inter",
-  card: "bg-white p-8 rounded-lg shadow-xl max-w-2xl w-full text-center space-y-6",
+  card: "bg-white p-8 rounded-lg shadow-xl max-w-3xl w-full text-center space-y-6",
   heading: "text-3xl font-bold text-gray-800",
   subheading: "text-lg text-gray-600",
   buttonPrimary: "bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed",
@@ -21,10 +21,10 @@ const tailwindClasses = {
   copyButtonFeedback: "bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md whitespace-nowrap",
   snackbar: "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full text-white font-bold shadow-lg transition-transform duration-300 ease-in-out transform",
   snackbarError: "bg-red-500",
-  adjectiveContainer: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-6",
-  adjectiveButton: "py-2 px-4 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out",
-  adjectiveButtonSelected: "py-2 px-4 rounded-full border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold",
-  adjectiveButtonInactive: "py-2 px-4 rounded-full border-2 border-gray-200 text-gray-400 bg-gray-100",
+  adjectiveContainer: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-6",
+  adjectiveButton: "py-2 px-2 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out text-sm md:text-base text-center",
+  adjectiveButtonSelected: "py-2 px-2 rounded-full border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-sm md:text-base text-center",
+  adjectiveButtonInactive: "py-2 px-2 rounded-full border-2 border-gray-200 text-gray-400 bg-gray-100 text-center",
   adjectiveList: "mt-4 text-left p-4 bg-gray-50 rounded-lg",
   adjectiveListItem: "my-1",
   quadrantContainer: "grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-left",
@@ -43,6 +43,88 @@ const adjectives = [
   "Self-Assertive", "Self-Conscious", "Sensible", "Sentimental", "Shy", "Silly", "Spontaneous", "Sympathetic", "Tense",
   "Trustworthy", "Warm", "Wise", "Witty"
 ];
+
+// Helper component for the floating help button
+const HelpButton = ({ onClick }) => (
+  <button
+    className="fixed top-4 right-4 z-50 p-3 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition-colors duration-200"
+    onClick={onClick}
+    aria-label="Open help guide"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm-1 15h2v-6h-2v6zm0-8h2V7h-2v2z" />
+    </svg>
+  </button>
+);
+
+// Helper component for the help modal
+const HelpModal = ({ show, onClose }) => {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900 bg-opacity-75 overflow-y-auto" onClick={onClose}>
+      <div className="relative w-full max-w-2xl max-h-full bg-white rounded-lg shadow-xl p-6 md:p-8" onClick={e => e.stopPropagation()}>
+        <button
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors duration-200"
+          onClick={onClose}
+          aria-label="Close help guide"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">Guide to the Johari Window Team Exercise</h2>
+        <div className="space-y-6 text-gray-700 overflow-y-auto max-h-[80vh]">
+          <div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">What is the Johari Window?</h3>
+            <p>
+              The Johari Window is a communication tool designed to help people better understand their relationship with themselves and others. It's a simple and powerful way to map self-perception and external perception, leading to greater self-awareness and team dynamics.
+            </p>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">The Four Quadrants</h3>
+            <div className="space-y-4">
+              <p>
+                <strong>Arena (Open Self):</strong> This quadrant contains adjectives selected by both you and your teammates. These are the traits you both recognize, representing your open and public self.
+              </p>
+              <p>
+                <strong>Blind Spot:</strong> This quadrant contains adjectives selected by your teammates but not by you. These are traits others see in you that you are unaware of, offering a valuable opportunity for self-discovery.
+              </p>
+              <p>
+                <strong>Facade (Hidden Self):</strong> This quadrant contains adjectives selected by you but not by your teammates. These are traits you know about yourself but keep hidden from others.
+              </p>
+              <p>
+                <strong>Unknown:</strong> This quadrant contains adjectives that were not selected by either you or your teammates. These represent traits that are yet to be discovered by anyone.
+              </p>
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">How to Use this Tool</h3>
+            <p>This tool is designed to be a simple, 3-step process for you and your team:</p>
+            <ol className="list-decimal list-inside space-y-2">
+              <li><strong>Step 1: Create your window.</strong> Begin by entering your name and selecting the five adjectives that you feel best describe you.</li>
+              <li><strong>Step 2: Share the link.</strong> Once you've created your window, a unique link will be generated. Share this link with your teammates so they can provide their feedback.</li>
+              <li><strong>Step 3: View your results.</strong> As feedback is submitted, your Johari Window will be populated in real-time, helping you visualize the collective perceptions and start a conversation.</li>
+            </ol>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Tips for a Productive Discussion</h3>
+            <p>
+              The Johari Window is most powerful when used as a starting point for open, honest, and constructive dialogue. Here are a few tips for your team discussion:
+            </p>
+            <ul className="list-disc list-inside space-y-2">
+              <li><strong>Focus on "Why":</strong> Instead of just looking at the adjectives, discuss the specific behaviors that led to certain perceptions. For example, if "dependable" is in your Blind Spot, ask your teammates for an example of when you demonstrated this quality.</li>
+              <li><strong>Practice Active Listening:</strong> Listen to your teammates' feedback without becoming defensive. Remember, this is a tool for self-discovery and growth, not a critique.</li>
+              <li><strong>Be Constructive, Not Critical:</strong> When giving feedback, focus on observable behaviors and use "I" statements. For example, say "I noticed you are very organized when you lead meetings," instead of "You are organized."</li>
+              <li><strong>Celebrate Strengths:</strong> Pay special attention to adjectives in the Arena (Open Self) and Blind Spot. These are your known and unknown strengths!</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 // Component for the welcome page with name input
 const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady, setSnackbarMessage }) => {
@@ -474,6 +556,7 @@ export default function App() {
   const [appId, setAppId] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
   const [snackbarMessage, setSnackbarMessage] = useState(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   const handleCreateNewWindow = () => {
     setWindowId(null);
@@ -759,6 +842,8 @@ export default function App() {
 
   return (
     <FirebaseContext.Provider value={{ db }}>
+      <HelpButton onClick={() => setShowHelp(true)} />
+      <HelpModal show={showHelp} onClose={() => setShowHelp(false)} />
       <div className={tailwindClasses.container}>
         <div className={tailwindClasses.card}>
           {renderContent()}
