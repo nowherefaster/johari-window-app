@@ -67,7 +67,6 @@ export default function App() {
   const [page, setPage] = useState('start');
   const [shareLink, setShareLink] = useState('');
   const [debugInfo, setDebugInfo] = useState({});
-  const [hasSubmittedSelfAssessment, setHasSubmittedSelfAssessment] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [creatorName, setCreatorName] = useState('');
   const [teammateResponseCount, setTeammateResponseCount] = useState(0);
@@ -188,15 +187,16 @@ export default function App() {
         const data = docSnap.data();
         setCreatorName(data.creatorName || 'Your Teammate');
         const userSelections = data.selfAssessment || [];
-        setHasSubmittedSelfAssessment(userSelections.length > 0);
+        setSelectedAdjectives(userSelections); // Update state for editing
         
-        // This is where we determine the initial page based on who the user is.
         if (userId === creatorId) {
+          if (userSelections.length > 0) {
             setPage('results');
-        } else {
-            // For a teammate, the feedback listener will determine the page
+          } else {
             setPage('assess');
+          }
         }
+        
       } else {
         const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
         setError(errorMessage);
@@ -218,14 +218,14 @@ export default function App() {
           doc.data().adjectives.forEach(adj => peerSelections.add(adj));
         });
         
-        // Use a one-time get to get the self-assessment, since it's already set in state
-        const selfAssessment = results?.facade || []; // fallback to existing or empty
+        const selfAssessment = selectedAdjectives;
         const arena = selfAssessment.filter(adj => peerSelections.has(adj));
         const blindSpot = Array.from(peerSelections).filter(adj => !selfAssessment.includes(adj));
         const facade = selfAssessment.filter(adj => !peerSelections.has(adj));
         const unknown = adjectivesList.filter(adj => !selfAssessment.includes(adj) && !peerSelections.has(adj));
         setResults({ arena, blindSpot, facade, unknown });
-        setLoading(false); // Only set loading to false after both snapshots have processed
+        
+        setLoading(false); 
       }, (error) => {
           console.error("Error with creator feedback onSnapshot:", error);
       });
@@ -332,13 +332,7 @@ export default function App() {
           selfAssessment: selectedAdjectives,
         });
         updateDebug('assessment_saved', `Self-assessment saved with ${selectedAdjectives.length} adjectives.`);
-        const selfAssessment = selectedAdjectives;
-        const arena = selfAssessment.filter(adj => results.blindSpot.includes(adj));
-        const blindSpot = results.blindSpot.filter(adj => !selfAssessment.includes(adj));
-        const facade = selfAssessment.filter(adj => !results.blindSpot.includes(adj));
-        const unknown = results.unknown.filter(adj => !selfAssessment.includes(adj));
-        setResults({ arena, blindSpot, facade, unknown });
-
+        // The onSnapshot listener will update the page and results
       } else {
         const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
         
