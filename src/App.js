@@ -79,13 +79,12 @@ export default function App() {
         let firebaseConfig;
         let rawConfig = "";
         try {
-          // Log the raw value before attempting to parse it
-          rawConfig = __firebase_config;
+          // Use REACT_APP_FIREBASE_CONFIG for Vercel deployment, fallback to __firebase_config for Canvas
+          rawConfig = process.env.REACT_APP_FIREBASE_CONFIG || __firebase_config;
           updateDebug('raw_firebase_config', rawConfig);
           firebaseConfig = JSON.parse(rawConfig);
         } catch (e) {
-          // A more descriptive error is thrown here if the variable is not available
-          throw new Error("Firebase configuration is not available. Please ensure the '__firebase_config' environment variable is set and is a valid JSON string.");
+          throw new Error("Firebase configuration is not available. Please ensure the 'REACT_APP_FIREBASE_CONFIG' environment variable is set and is a valid JSON string.");
         }
         
         const app = initializeApp(firebaseConfig);
@@ -97,7 +96,8 @@ export default function App() {
         
         let initialAuthToken;
         try {
-          initialAuthToken = __initial_auth_token;
+          // Use REACT_APP_INITIAL_AUTH_TOKEN for Vercel, fallback to __initial_auth_token for Canvas
+          initialAuthToken = process.env.REACT_APP_INITIAL_AUTH_TOKEN || __initial_auth_token;
         } catch (e) {
           initialAuthToken = null;
           updateDebug('auth_token_error', 'Initial auth token is not available. Proceeding without it.');
@@ -150,7 +150,7 @@ export default function App() {
       
       let appId;
       try {
-        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        appId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       } catch(e) {
         appId = 'default-app-id';
         updateDebug('app_id_error', 'App ID is not available. Using default.');
@@ -238,7 +238,7 @@ export default function App() {
       // Use the provided app ID from the environment.
       let appId;
       try {
-        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        appId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       } catch(e) {
         appId = 'default-app-id';
         updateDebug('app_id_error', 'App ID is not available. Using default.');
@@ -286,7 +286,7 @@ export default function App() {
       // Use the provided app ID from the environment.
       let appId;
       try {
-        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        appId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       } catch(e) {
         appId = 'default-app-id';
         updateDebug('app_id_error', 'App ID is not available. Using default.');
@@ -342,7 +342,7 @@ export default function App() {
           <h1 className="text-3xl font-bold text-red-600">⚠️ Configuration Error</h1>
           <p className="mt-4 text-lg text-red-500">
             The Firebase configuration is missing. This app cannot run without it.
-            Please ensure the `__firebase_config` environment variable is set.
+            Please ensure the `REACT_APP_FIREBASE_CONFIG` environment variable is set.
           </p>
           <p className="mt-2 text-sm text-gray-600">
             It should be a JSON string that contains your project's `apiKey`, `projectId`, etc.
