@@ -1,23 +1,24 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, getDocs, query, where, updateDoc } from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 
 // Define the Firebase context to pass services to components
 const FirebaseContext = createContext(null);
 
 // Tailwind CSS classes for a clean, responsive, and professional look
 const tailwindClasses = {
-  container: "min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4",
-  card: "bg-white p-8 rounded-lg shadow-xl max-w-2xl w-full text-center space-y-6 relative", // Added 'relative' for positioning guide button
+  container: "min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 overflow-x-hidden",
+  card: "bg-white p-8 rounded-lg shadow-xl max-w-2xl w-full text-center space-y-6",
   heading: "text-3xl font-bold text-gray-800",
   subheading: "text-lg text-gray-600",
-  button: "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105",
+  buttonPrimary: "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed",
+  buttonSecondary: "bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out",
   input: "w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500",
   adjectiveGrid: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-4",
-  adjectiveButton: "py-2 px-4 rounded-lg border-2 font-medium text-sm transition duration-150 ease-in-out",
-  adjectiveSelected: "bg-indigo-600 text-white border-indigo-600",
-  adjectiveUnselected: "bg-white text-gray-700 border-gray-300 hover:bg-gray-100",
+  adjectiveButton: "py-2 px-4 rounded-lg border-2 font-medium text-sm transition-all duration-150 ease-in-out",
+  adjectiveSelected: "bg-indigo-100 text-indigo-800 border-indigo-400",
+  adjectiveUnselected: "bg-white text-gray-700 border-gray-300 hover:bg-gray-50",
   resultsGrid: "grid grid-cols-1 md:grid-cols-2 gap-4 mt-6",
   quadrant: "p-4 rounded-lg shadow-inner",
   quadrantArena: "bg-green-100 border-green-500",
@@ -31,9 +32,9 @@ const tailwindClasses = {
   link: "font-mono bg-gray-100 p-2 rounded-md break-all text-sm",
   copyButton: "bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition duration-150 ease-in-out",
   error: "text-red-500 font-medium",
-  guideModal: "fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50",
-  guideModalContent: "bg-white p-8 rounded-lg shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto relative",
-  guideCloseButton: "absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold",
+  debugPanel: "bg-gray-800 text-gray-200 p-4 rounded-lg mt-8 text-xs text-left w-full max-w-2xl",
+  debugTitle: "font-bold text-sm mb-2",
+  debugLog: "font-mono",
 };
 
 // A curated list of adjectives for a work-based Johari Window
@@ -56,142 +57,289 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
+  const [creatorId, setCreatorId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [windowId, setWindowId] = useState(null);
   const [isSelfAssessment, setIsSelfAssessment] = useState(false);
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
   const [results, setResults] = useState(null);
-  const [page, setPage] = useState('start'); // 'start', 'assess', 'results'
+  const [page, setPage] = useState('start');
   const [shareLink, setShareLink] = useState('');
-  const [showGuide, setShowGuide] = useState(false); // New state for the guide modal
-
-  // Function to initialize Firebase with retries
-  const initializeFirebaseWithRetry = async (retries = 3, delay = 100) => {
-    try {
-      const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
-      if (!firebaseConfigString) {
-          throw new Error('Firebase configuration not found.');
-      }
-      const firebaseConfig = JSON.parse(firebaseConfigString);
-      
-      const app = initializeApp(firebaseConfig);
-      const firestoreDb = getFirestore(app);
-      const firebaseAuth = getAuth(app);
-      
-      return { firestoreDb, firebaseAuth };
-    } catch (e) {
-      console.error(`Firebase initialization attempt failed. Retries left: ${retries}`);
-      if (retries > 0) {
-        await new Promise(res => setTimeout(res, delay));
-        return initializeFirebaseWithRetry(retries - 1, delay * 2); // Exponential backoff
-      }
-      throw e;
-    }
-  };
+  const [debugInfo, setDebugInfo] = useState({});
+  const [isCopied, setIsCopied] = useState(false);
+  const [creatorName, setCreatorName] = useState('');
+  const [teammateResponseCount, setTeammateResponseCount] = useState(0);
+  const [isWindowDataLoaded, setIsWindowDataLoaded] = useState(false);
+  const [peerAdjectives, setPeerAdjectives] = useState(new Set());
   
-  // 1. Firebase Initialization and Authentication
+  const updateDebug = (key, value) => {
+    setDebugInfo(prev => ({ ...prev, [key]: value }));
+  };
+
+  // Function to create and set the share link
+  const generateShareLink = (id, creator) => {
+    const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creator}`;
+    setShareLink(newShareLink);
+    updateDebug('share_link_set', newShareLink);
+  };
+
+  // PHASE 1: Initialize Firebase and handle authentication
   useEffect(() => {
-    const initApp = async () => {
+    const initFirebase = async () => {
+      updateDebug('init', 'Starting Firebase initialization...');
       try {
-        const { firestoreDb, firebaseAuth } = await initializeFirebaseWithRetry();
+        let firebaseConfig;
+        let rawConfig = "";
+        try {
+          rawConfig = typeof __firebase_config !== 'undefined' ? __firebase_config : process.env.REACT_APP_FIREBASE_CONFIG;
+          updateDebug('raw_firebase_config', rawConfig);
+          firebaseConfig = JSON.parse(rawConfig);
+        } catch (e) {
+          throw new Error("Firebase configuration is not available. Please ensure the 'REACT_APP_FIREBASE_CONFIG' environment variable is set and is a valid JSON string.");
+        }
         
+        const app = initializeApp(firebaseConfig);
+        const firestoreDb = getFirestore(app);
+        const firebaseAuth = getAuth(app);
         setDb(firestoreDb);
         setAuth(firebaseAuth);
+        updateDebug('firebase_ready', 'Firebase services initialized.');
+        
+        let initialAuthToken;
+        try {
+          initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : process.env.REACT_APP_INITIAL_AUTH_TOKEN;
+        } catch (e) {
+          initialAuthToken = null;
+          updateDebug('auth_token_error', 'Initial auth token is not available. Proceeding without it.');
+        }
 
-        onAuthStateChanged(firebaseAuth, async (user) => {
+        if (initialAuthToken) {
+          updateDebug('auth_state', 'Signing in with custom token...');
+          await signInWithCustomToken(firebaseAuth, initialAuthToken);
+        } else {
+          updateDebug('auth_state', 'No custom token found. Signing in anonymously...');
+          await signInAnonymously(firebaseAuth);
+        }
+
+        const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
           if (user) {
             setUserId(user.uid);
-            console.log("User authenticated:", user.uid);
-          } else {
-            console.log("No user found. Signing in anonymously...");
-            await signInAnonymously(firebaseAuth);
+            updateDebug('auth_state_final', `User authenticated with UID: ${user.uid}`);
           }
-          setLoading(false);
         });
 
-        // Handle initial URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const id = urlParams.get('id');
-        const mode = urlParams.get('mode');
-        if (id) {
-          setWindowId(id);
-          setShareLink(`${window.location.origin}${window.location.pathname}?id=${id}`);
-          if (mode === 'feedback') {
-            setIsSelfAssessment(false);
-            setPage('assess');
-          } else {
-            setIsSelfAssessment(true);
-            setPage('assess');
-          }
-        }
+        return () => unsubscribe();
       } catch (e) {
         console.error("Error initializing Firebase:", e);
-        setError(`Failed to initialize the app: ${e.message}. Please try again.`);
+        setError(`Error: ${e.message}`);
+        updateDebug('error', `Initialization error: ${e.message}`);
         setLoading(false);
       }
     };
-    
-    initApp();
+
+    initFirebase();
   }, []);
 
-  // 2. Real-time data fetching with onSnapshot
+  // PHASE 2: Handle URL parameters after auth is ready
   useEffect(() => {
-    if (!db || !windowId || !userId) return;
+    if (!db || !userId) {
+      updateDebug('phase2_status', 'Waiting for DB and userId to be available...');
+      return;
+    }
 
-    // Listen for changes to the main window document
-    const windowRef = doc(db, `/artifacts/${__app_id}/users/${userId}/windows`, windowId);
+    updateDebug('phase2_status', `DB and userId (${userId}) are ready. Checking URL...`);
+    setLoading(true);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const id = urlParams.get('id');
+    const creatorIdFromUrl = urlParams.get('creatorId');
+
+    if (id && creatorIdFromUrl) {
+      updateDebug('url_params', `Found windowId: ${id}, creatorId: ${creatorIdFromUrl}`);
+      setWindowId(id);
+      setCreatorId(creatorIdFromUrl);
+      setIsSelfAssessment(userId === creatorIdFromUrl);
+      generateShareLink(id, creatorIdFromUrl);
+    } else {
+      updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
+      setLoading(false);
+    }
+  }, [db, userId]);
+
+  // PHASE 3: Set up window listener (always needed)
+  useEffect(() => {
+    if (!db || !userId || !windowId || !creatorId) {
+      return;
+    }
+
+    updateDebug('phase3_status_window', 'Setting up window listener...');
+
+    let appId;
+    try {
+      appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    } catch(e) {
+      appId = 'default-app-id';
+      updateDebug('app_id_error', 'App ID is not available. Using default.');
+    }
+    
+    // Path for the window document is now in the public space
+    const windowRef = doc(db, `/artifacts/${appId}/public/data/windows`, windowId);
+    
     const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
+      updateDebug('onSnapshot_window', 'Window snapshot fired.');
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const userSelections = data.selfAssessment || [];
-
-        // Listen for changes in the feedback subcollection
-        const feedbackRef = collection(db, `/artifacts/${__app_id}/users/${userId}/windows/${windowId}/feedback`);
-        const unsubscribeFeedback = onSnapshot(feedbackRef, (querySnap) => {
-          const peerSelections = new Set();
-          querySnap.forEach(doc => {
-            doc.data().adjectives.forEach(adj => peerSelections.add(adj));
-          });
-
-          // Calculate Johari Window quadrants
-          const arena = userSelections.filter(adj => peerSelections.has(adj));
-          const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
-          const facade = userSelections.filter(adj => !peerSelections.has(adj));
-          const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
-
-          setResults({ arena, blindSpot, facade, unknown });
-        });
+        setCreatorName(data.creatorName || 'Your Teammate');
+        const selfAssessmentFromDb = data.selfAssessment || [];
         
-        return () => unsubscribeFeedback();
+        // Update the self-assessment state regardless of who the user is.
+        setSelectedAdjectives(selfAssessmentFromDb);
+        setIsWindowDataLoaded(true); // Signal that the window data is ready
+        
+        if (userId === creatorId) {
+          if (selfAssessmentFromDb.length > 0 && page !== 'assess') {
+            setPage('results');
+          } else if (page !== 'results') {
+            setPage('assess');
+          }
+        }
+      } else {
+        const errorMessage = "Error: This Johari Window does not exist or you don't have access to it. It may have been deleted or the URL is incorrect.";
+        setError(errorMessage);
+        updateDebug('doc_exists', errorMessage);
+        setLoading(false);
       }
+    }, (error) => {
+      console.error("Error with window onSnapshot:", error);
+      setError(`Error: ${error.message}. This may be due to a security permissions issue.`);
+      setLoading(false);
     });
 
     return () => unsubscribeWindow();
-  }, [db, windowId, userId]);
+  }, [db, userId, windowId, creatorId]);
+
+  // PHASE 4: Set up feedback listener and handle final page load
+  useEffect(() => {
+    if (!isWindowDataLoaded || !db || !userId || !windowId || !creatorId) {
+        updateDebug('phase4_status_feedback', 'Waiting for window data to be loaded...');
+        return;
+    }
+
+    updateDebug('phase4_status_feedback', 'Window data is loaded. Setting up feedback listener.');
+
+    let appId;
+    try {
+      appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    } catch(e) {
+      appId = 'default-app-id';
+      updateDebug('app_id_error', 'App ID is not available. Using default.');
+    }
+    
+    // Path for feedback is now also in the public space
+    const feedbackCollectionRef = collection(db, `/artifacts/${appId}/public/data/windows/${windowId}/feedback`);
+
+    let unsubscribeFeedback;
+
+    if (isSelfAssessment) {
+      // Logic for the creator: listen to all feedback
+      unsubscribeFeedback = onSnapshot(feedbackCollectionRef, (querySnap) => {
+        updateDebug('onSnapshot_feedback_creator', 'Feedback snapshot fired for creator.');
+        setTeammateResponseCount(querySnap.size);
+        const peerSelections = new Set();
+        querySnap.forEach(doc => {
+          doc.data().adjectives.forEach(adj => peerSelections.add(adj));
+        });
+        setPeerAdjectives(peerSelections);
+        setLoading(false); // End loading only after feedback is processed
+      }, (error) => {
+          console.error("Error with creator feedback onSnapshot:", error);
+          setError(`Error loading feedback: ${error.message}`);
+          setLoading(false);
+      });
+    } else {
+      // Logic for the teammate: listen to their specific feedback
+      const q = query(feedbackCollectionRef, where('submittedBy', '==', userId));
+      unsubscribeFeedback = onSnapshot(q, (querySnap) => {
+        updateDebug('onSnapshot_feedback_teammate', 'Teammate feedback snapshot fired.');
+        if (!querySnap.empty) {
+          const docSnap = querySnap.docs[0];
+          setSelectedAdjectives(docSnap.data().adjectives);
+          setPage('submitted');
+        } else {
+          setPage('assess');
+          setSelectedAdjectives([]); // Clear selections for a new assessment
+        }
+        setLoading(false); // End loading for teammate
+      }, (error) => {
+        console.error("Error with teammate feedback onSnapshot:", error);
+        setError(`Error loading feedback: ${error.message}`);
+        setLoading(false);
+      });
+    }
+
+    return () => {
+      if (unsubscribeFeedback) {
+        unsubscribeFeedback();
+      }
+    };
+  }, [isWindowDataLoaded, db, userId, windowId, creatorId, isSelfAssessment]);
+
+  // PHASE 5: Calculate results whenever self-assessment or peer feedback changes
+  useEffect(() => {
+    if (isSelfAssessment && isWindowDataLoaded && selectedAdjectives && peerAdjectives) {
+      updateDebug('calculating_results', 'Calculating results based on updated data.');
+      
+      const selfAssessment = selectedAdjectives;
+      const arena = selfAssessment.filter(adj => peerAdjectives.has(adj));
+      const blindSpot = Array.from(peerAdjectives).filter(adj => !selfAssessment.includes(adj));
+      const facade = selfAssessment.filter(adj => !peerAdjectives.has(adj));
+      const unknown = adjectivesList.filter(adj => !selfAssessment.includes(adj) && !peerAdjectives.has(adj));
+      setResults({ arena, blindSpot, facade, unknown });
+    }
+  }, [isSelfAssessment, isWindowDataLoaded, selectedAdjectives, peerAdjectives]);
 
   const handleStartNewWindow = async () => {
-    if (!db || !userId) return;
+    if (!db || !userId) {
+        updateDebug('start_new_error', "Attempted to start new window before Firebase and user are ready.");
+        return;
+    }
+
     setLoading(true);
     try {
       const newWindowId = generateUniqueId();
-      const userDocRef = doc(db, `/artifacts/${__app_id}/users/${userId}/windows`, newWindowId);
+      let appId;
+      try {
+        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      } catch(e) {
+        appId = 'default-app-id';
+        updateDebug('app_id_error', 'App ID is not available. Using default.');
+      }
+      
+      // Store the window in the public path.
+      const windowDocRef = doc(db, `/artifacts/${appId}/public/data/windows`, newWindowId);
 
-      // Create a new document for the window
-      await setDoc(userDocRef, {
+      await setDoc(windowDocRef, {
         creatorId: userId,
         createdAt: new Date(),
         selfAssessment: [],
+        creatorName: creatorName,
       });
-
-      // Set state and navigate
+      updateDebug('new_window_created', `Successfully created new window with ID: ${newWindowId}`);
+      updateDebug('new_window_path', `/artifacts/${appId}/public/data/windows/${newWindowId}`);
+      
       setWindowId(newWindowId);
+      setCreatorId(userId);
       setIsSelfAssessment(true);
-      setPage('assess');
-      setShareLink(`${window.location.origin}${window.location.pathname}?id=${newWindowId}&mode=feedback`);
+
+      const creatorLink = `${window.location.origin}${window.location.pathname}?id=${newWindowId}&creatorId=${userId}`;
+      window.history.pushState({}, '', creatorLink);
+      generateShareLink(newWindowId, userId);
+      
     } catch (e) {
       console.error("Error starting new window:", e);
-      setError("Failed to start a new window. Please try again.");
+      setError("Failed to start a new window. Please try again. The error was: " + e.message);
+      updateDebug('start_new_error', `Failed to create new window: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -206,30 +354,68 @@ export default function App() {
       }
     });
   };
+  
+  const handleEditSelfAssessment = () => {
+    setPage('assess');
+  };
+
+  const handleUpdateFeedback = () => {
+    setPage('assess');
+  };
+
+  const handleCreateNewWindow = () => {
+    window.location.href = window.location.origin + window.location.pathname;
+  };
 
   const handleSaveAssessment = async () => {
-    if (!db || !windowId || !userId) return;
+    if (!db || !windowId || !userId || !creatorId) return;
     setLoading(true);
     try {
+      let appId;
+      try {
+        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      } catch(e) {
+        appId = 'default-app-id';
+        updateDebug('app_id_error', 'App ID is not available. Using default.');
+      }
       if (isSelfAssessment) {
-        // Save the user's own assessment
-        const userDocRef = doc(db, `/artifacts/${__app_id}/users/${userId}/windows`, windowId);
-        await updateDoc(userDocRef, {
+        // Creator's self-assessment path is now in the public space.
+        const windowDocRef = doc(db, `/artifacts/${appId}/public/data/windows`, windowId);
+        await updateDoc(windowDocRef, {
           selfAssessment: selectedAdjectives,
         });
+        updateDebug('assessment_saved', `Self-assessment saved with ${selectedAdjectives.length} adjectives.`);
+        // Explicitly set the page back to results after saving
+        setPage('results');
       } else {
-        // Save peer feedback
-        const feedbackCollectionRef = collection(db, `/artifacts/${__app_id}/users/${userId}/windows/${windowId}/feedback`);
-        await addDoc(feedbackCollectionRef, {
-          adjectives: selectedAdjectives,
-          submittedBy: 'anonymous', // In a real app, this might be a name or anonymous ID
-          submittedAt: new Date(),
+        const feedbackCollectionRef = collection(db, `/artifacts/${appId}/public/data/windows/${windowId}/feedback`);
+        
+        const q = query(feedbackCollectionRef, where('submittedBy', '==', userId));
+        const querySnapshot = await getDocs(q);
+        let existingFeedbackDocId = null;
+        querySnapshot.forEach(docSnap => {
+            existingFeedbackDocId = docSnap.id;
         });
+        
+        if (existingFeedbackDocId) {
+          const docRef = doc(feedbackCollectionRef, existingFeedbackDocId);
+          await updateDoc(docRef, { adjectives: selectedAdjectives });
+          updateDebug('feedback_updated', 'Existing feedback updated.');
+        } else {
+          await addDoc(feedbackCollectionRef, {
+            adjectives: selectedAdjectives,
+            submittedBy: userId,
+            submittedAt: new Date(),
+          });
+          updateDebug('feedback_submitted', 'New feedback submitted.');
+        }
+
+        setPage('submitted');
       }
-      setPage('results');
     } catch (e) {
       console.error("Error saving assessment:", e);
       setError("Failed to save your selections. Please try again.");
+      updateDebug('save_error', `Failed to save assessment: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -242,21 +428,34 @@ export default function App() {
     textarea.select();
     try {
       document.execCommand('copy');
-      alert("Link copied to clipboard!");
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
     document.body.removeChild(textarea);
   };
   
-  // Render different pages based on state
   const renderContent = () => {
     if (loading) {
       return <p className={tailwindClasses.loading}>Loading...</p>;
     }
     
     if (error) {
-      return <p className={tailwindClasses.error}>Error: {error}</p>;
+      return (
+        <div className="text-center p-4">
+          <h1 className="text-3xl font-bold text-red-600">⚠️ Error</h1>
+          <p className="mt-4 text-lg text-red-500">
+            {error}
+          </p>
+          <div className={tailwindClasses.debugPanel}>
+            <h3 className={tailwindClasses.debugTitle}>Current Debug Log</h3>
+            <pre className={tailwindClasses.debugLog}>
+              {JSON.stringify(debugInfo, null, 2)}
+            </pre>
+          </div>
+        </div>
+      );
     }
 
     switch (page) {
@@ -265,7 +464,18 @@ export default function App() {
           <>
             <h1 className={tailwindClasses.heading}>Discover Your Johari Window</h1>
             <p className={tailwindClasses.subheading}>A simple tool to help you and your team better understand your interpersonal dynamics.</p>
-            <button className={tailwindClasses.button} onClick={handleStartNewWindow}>
+            <div className="w-full max-w-sm mt-4 mx-auto">
+              <label htmlFor="creator-name" className="block text-sm font-medium text-gray-700 mb-1 text-left">Your First Name</label>
+              <input
+                id="creator-name"
+                type="text"
+                value={creatorName}
+                onChange={(e) => setCreatorName(e.target.value)}
+                className={tailwindClasses.input}
+                placeholder="e.g., Jane"
+              />
+            </div>
+            <button className={tailwindClasses.buttonPrimary} onClick={handleStartNewWindow} disabled={loading || !userId || creatorName.trim() === ''}>
               Start My Window
             </button>
           </>
@@ -274,7 +484,7 @@ export default function App() {
         return (
           <>
             <h1 className={tailwindClasses.heading}>
-              {isSelfAssessment ? "Select How You See Yourself" : "Select How You See Your Teammate"}
+              {isSelfAssessment ? "Select How You See Yourself" : `Select How You See ${creatorName}`}
             </h1>
             <p className={tailwindClasses.subheading}>
               {isSelfAssessment 
@@ -287,30 +497,50 @@ export default function App() {
                   key={adj}
                   onClick={() => handleSelectAdjective(adj)}
                   className={`${tailwindClasses.adjectiveButton} ${selectedAdjectives.includes(adj) ? tailwindClasses.adjectiveSelected : tailwindClasses.adjectiveUnselected}`}
+                  disabled={loading}
                 >
                   {adj}
                 </button>
               ))}
             </div>
-            <button className={tailwindClasses.button} onClick={handleSaveAssessment}>
+            <button
+              className={tailwindClasses.buttonPrimary}
+              onClick={handleSaveAssessment}
+              disabled={loading || selectedAdjectives.length === 0}
+            >
               {isSelfAssessment ? "Submit My Selections" : "Submit Feedback"}
             </button>
           </>
         );
       case 'results':
+        const responsesText = teammateResponseCount === 1 ? 'teammate has responded' : 'teammates have responded';
         return (
           <>
-            <h1 className={tailwindClasses.heading}>Your Johari Window Results</h1>
+            <h1 className={tailwindClasses.heading}>{creatorName}'s Johari Window Results</h1>
             <p className={tailwindClasses.subheading}>
               This is your unique window. Share the link below to get more feedback!
             </p>
             
-            <div className={tailwindClasses.linkContainer}>
+            <div className={`${tailwindClasses.linkContainer} items-center`}>
               <p>Your unique share link:</p>
               <div className={tailwindClasses.link}>{shareLink}</div>
-              <button className={tailwindClasses.copyButton} onClick={handleCopyLink}>Copy Link</button>
+              <div className="flex justify-center mt-4">
+                <div className="relative">
+                  <button className={tailwindClasses.buttonPrimary} onClick={handleCopyLink}>Copy Link</button>
+                  {isCopied && (
+                    <span className="absolute top-1/2 left-full -translate-y-1/2 ml-4 text-green-600 font-medium whitespace-nowrap animate-fade-in-out">
+                      Copied! ✅
+                    </span>
+                  )}
+                </div>
+              </div>
               <p>Your User ID for Firestore: {userId}</p>
+              <p>Creator's User ID: {creatorId}</p>
             </div>
+            
+            <p className="text-md text-gray-600 font-medium my-4">
+              <span className="text-indigo-600 font-bold">{teammateResponseCount}</span> {responsesText}.
+            </p>
             
             {results && (
               <div className={tailwindClasses.resultsGrid}>
@@ -341,66 +571,56 @@ export default function App() {
               </div>
             )}
             
-            <button className={`${tailwindClasses.button} mt-8`} onClick={() => setPage('start')}>
-              Create Another Window
-            </button>
+            {isSelfAssessment && (
+              <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 justify-center mt-8">
+                <button className={tailwindClasses.buttonSecondary} onClick={handleEditSelfAssessment}>
+                  Edit My Selections
+                </button>
+                <button className={tailwindClasses.buttonPrimary} onClick={handleCreateNewWindow}>
+                  Create Another Window
+                </button>
+              </div>
+            )}
+          </>
+        );
+      case 'submitted':
+        return (
+          <>
+            <h1 className={tailwindClasses.heading}>Thank you for your feedback!</h1>
+            <p className={tailwindClasses.subheading}>Your selections have been successfully submitted.</p>
+            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 justify-center">
+              <button
+                className={tailwindClasses.buttonSecondary}
+                onClick={handleUpdateFeedback}
+              >
+                Update My Feedback
+              </button>
+              <button
+                className={tailwindClasses.buttonPrimary}
+                onClick={handleCreateNewWindow}
+              >
+                Create My Own Window
+              </button>
+            </div>
           </>
         );
       default:
         return null;
     }
   };
-  
-  // The Guide Modal component
-  const GuideModal = () => (
-    <div className={tailwindClasses.guideModal}>
-      <div className={tailwindClasses.guideModalContent}>
-        <button className={tailwindClasses.guideCloseButton} onClick={() => setShowGuide(false)}>
-          &times;
-        </button>
-        <h2 className="text-2xl font-bold mb-4">Your Guide to the Johari Window Team Exercise</h2>
-        
-        <h3 className="text-xl font-semibold mt-4">What is the Johari Window?</h3>
-        <p className="mt-2 text-gray-700">The Johari Window is a simple but powerful model for improving self-awareness and mutual understanding within a team. By comparing how you see yourself with how your teammates see you, you can gain valuable insights and build stronger relationships. The model is based on four quadrants:</p>
-        <ul className="list-disc list-inside mt-2 space-y-1">
-          <li><strong>The Arena (Open Self):</strong> Things that both you and your teammates know about you. This is the goal of the exercise—to expand this area through open communication.</li>
-          <li><strong>The Blind Spot:</strong> Things your teammates know about you that you are not yet aware of. This is an opportunity for personal growth through feedback.</li>
-          <li><strong>The Facade (Hidden Self):</strong> Things you know about yourself that you choose not to share with your teammates. Reducing this area builds trust and vulnerability.</li>
-          <li><strong>The Unknown:</strong> Things that no one on the team knows about you yet. This is an area of untapped potential and discovery.</li>
-        </ul>
-        
-        <h3 className="text-xl font-semibold mt-6">How to Participate in the Exercise</h3>
-        <p className="mt-2 text-gray-700">This app is designed to make the Johari Window exercise easy to run. Just follow these steps:</p>
-        <ol className="list-decimal list-inside mt-2 space-y-1">
-          <li><strong>Do Your Self-Assessment:</strong> Use your unique creator link to begin. Select the adjectives you feel best describe you, and then click <strong>"Submit My Selections."</strong> The app will save your choices and generate the quadrants of your window.</li>
-          <li><strong>Give Your Feedback:</strong> If a teammate has sent you a link to their window, use that link to provide your feedback. Select the adjectives you feel best describe them. The app will automatically update their results page in real-time.</li>
-          <li><strong>Review and Discuss the Results:</strong> Once enough teammates have responded, you can all sit down and discuss the results together. The goal isn't to debate the feedback but to explore it with curiosity.</li>
-        </ol>
-
-        <h3 className="text-xl font-semibold mt-6">Tips for a Successful Team Discussion</h3>
-        <ul className="list-disc list-inside mt-2 space-y-1">
-          <li><strong>Create Psychological Safety:</strong> Remind everyone that the purpose is to help each other grow and build trust. This is not a formal performance review.</li>
-          <li><strong>Focus on the Quadrants:</strong> Start by discussing the <strong>Arena</strong> (what you all agree on) to build a positive foundation. Then, move to the <strong>Facade</strong> (what you shared about yourself) and the <strong>Blind Spot</strong> (the feedback from your team).</li>
-          <li><strong>Use "I" Statements:</strong> When giving feedback, use "I feel..." or "I've noticed..." statements to describe your perceptions, rather than making definitive statements about the other person.</li>
-          <li><strong>Ask Open-Ended Questions:</strong> Instead of defending a point, try asking questions like, "Could you give me an example of when you saw me demonstrate that?" or "That's interesting—why do you think that adjective came to mind for you?"</li>
-        </ul>
-      </div>
-    </div>
-  );
 
   return (
-    <FirebaseContext.Provider value={{ db, auth }}>
+    <FirebaseContext.Provider value={{ db }}>
       <div className={tailwindClasses.container}>
         <div className={tailwindClasses.card}>
-          <button
-            className="absolute top-4 right-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg text-sm transition duration-150 ease-in-out"
-            onClick={() => setShowGuide(true)}
-          >
-            Guide
-          </button>
           {renderContent()}
         </div>
-        {showGuide && <GuideModal />}
+        <div className={tailwindClasses.debugPanel}>
+          <h3 className={tailwindClasses.debugTitle}>Debug Log</h3>
+          <pre className={tailwindClasses.debugLog}>
+            {JSON.stringify(debugInfo, null, 2)}
+          </pre>
+        </div>
       </div>
     </FirebaseContext.Provider>
   );
