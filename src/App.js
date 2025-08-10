@@ -132,7 +132,7 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
           {submissionStatus.message}
         </div>
       )}
-      <div classNameрование={tailwindClasses.adjectiveContainer}>
+      <div className={tailwindClasses.adjectiveContainer}>
         {adjectives.map((adj) => (
           <button
             key={adj}
@@ -411,14 +411,23 @@ export default function App() {
   useEffect(() => {
     if (!db || !windowId || !isAppReady || appState !== 'windowCreated' || !appId) return;
 
+    setDebugInfo(prev => ({...prev, message: "onSnapshot listener for window started."}));
+
     const unsub = onSnapshot(doc(db, `artifacts/${appId}/public/data/windows`, windowId), (docSnap) => {
+      setDebugInfo(prev => ({...prev, message: "onSnapshot callback fired.", docExists: docSnap.exists()}));
       if (docSnap.exists()) {
         const data = docSnap.data();
         setWindowData(data);
+        setDebugInfo(prev => ({...prev, message: "Window data received and state updated.", windowData: data}));
+      } else {
+        setDebugInfo(prev => ({...prev, message: "onSnapshot callback fired, but document does not exist."}));
       }
     });
 
-    return () => unsub();
+    return () => {
+      setDebugInfo(prev => ({...prev, message: "onSnapshot listener for window unsubscribed."}));
+      unsub();
+    };
   }, [db, windowId, isAppReady, appState, appId]);
 
   // Fetch creator's name for feedback page
