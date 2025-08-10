@@ -24,7 +24,7 @@ const tailwindClasses = {
   adjectiveContainer: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-6",
   adjectiveButton: "py-2 px-4 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out",
   adjectiveButtonSelected: "py-2 px-4 rounded-full border-2 border-indigo-600 bg-indigo-50 text-indigo-700 font-bold",
-  adjectiveButtonInactive: "py-2 px-4 rounded-full border-2 border-gray-200 text-gray-400 bg-gray-100 cursor-not-allowed",
+  adjectiveButtonInactive: "py-2 px-4 rounded-full border-2 border-gray-200 text-gray-400 bg-gray-100",
   adjectiveList: "mt-4 text-left p-4 bg-gray-50 rounded-lg",
   adjectiveListItem: "my-1",
   quadrantContainer: "grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-left",
@@ -189,11 +189,40 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
 };
 
 // Component for giving feedback
-const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appId, setDebugInfo, setSnackbarMessage }) => {
+const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appId, userId, setDebugInfo, setSnackbarMessage }) => {
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
+  const [feedbackDocId, setFeedbackDocId] = useState(null);
   const firebaseContext = React.useContext(FirebaseContext);
   const db = firebaseContext.db;
   const MAX_SELECTIONS = 5;
+
+  // New useEffect to fetch existing feedback
+  useEffect(() => {
+    if (!db || !windowId || !userId) return;
+
+    const fetchExistingFeedback = async () => {
+      try {
+        const feedbackCollectionRef = collection(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`);
+        const q = query(feedbackCollectionRef, where("creatorId", "==", userId));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+          const doc = querySnapshot.docs[0];
+          setFeedbackDocId(doc.id);
+          setSelectedAdjectives(doc.data().selections);
+          setDebugInfo(prev => ({...prev, message: `Existing feedback found and loaded for userId: ${userId}`}));
+        } else {
+          setDebugInfo(prev => ({...prev, message: `No existing feedback found for userId: ${userId}`}));
+        }
+      } catch (e) {
+        console.error("Error fetching existing feedback: ", e);
+        setDebugInfo(prev => ({...prev, error: e.message, message: "Failed to fetch existing feedback."}));
+      }
+    };
+
+    fetchExistingFeedback();
+  }, [db, windowId, userId, appId, setDebugInfo]);
+
 
   const toggleAdjective = (adj) => {
     // Log state BEFORE the click logic
@@ -237,12 +266,22 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
 
     try {
       const feedbackCollection = collection(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`);
-      await addDoc(feedbackCollection, {
-        selections: selectedAdjectives,
-        createdAt: new Date(),
-      });
+
+      if (feedbackDocId) {
+        // Update existing document
+        const docRef = doc(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`, feedbackDocId);
+        await updateDoc(docRef, { selections: selectedAdjectives });
+        setDebugInfo(prev => ({...prev, message: `Successfully updated feedback document ID: ${feedbackDocId}`}));
+      } else {
+        // Create new document
+        await addDoc(feedbackCollection, {
+          selections: selectedAdjectives,
+          creatorId: userId, // <-- This is the key change
+          createdAt: new Date(),
+        });
+        setDebugInfo(prev => ({...prev, message: "Successfully submitted NEW feedback to subcollection."}));
+      }
       setAppState('submitted');
-      setDebugInfo(prev => ({...prev, message: "Successfully submitted feedback to subcollection.", windowId: windowId}));
     } catch (e) {
       console.error("Error submitting feedback: ", e);
       setSnackbarMessage({ type: 'error', message: "Failed to submit feedback. Please try again." });
@@ -606,6 +645,7 @@ export default function App() {
             setAppState={setAppState}
             isAppReady={isAppReady}
             appId={appId}
+            userId={userId}
             setDebugInfo={setDebugInfo}
             setSnackbarMessage={setSnackbarMessage}
           />
