@@ -176,7 +176,7 @@ export default function App() {
 
     let appId;
     try {
-      appId = typeof __app_id !== 'undefined' ? __app_id : process.env.REACT_APP_APP_ID || 'default-app-id';
+      appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
     } catch(e) {
       appId = 'default-app-id';
       updateDebug('app_id_error', 'App ID is not available. Using default.');
@@ -189,8 +189,21 @@ export default function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setCreatorName(data.creatorName || 'Your Teammate');
-        // This state is for the creator's own assessment.
-        setSelectedAdjectives(data.selfAssessment || []);
+        
+        // This is the self-assessment list from Firestore, which determines the creator's page state.
+        const selfAssessmentFromDb = data.selfAssessment || [];
+
+        // For the creator, if a self-assessment exists, go to results. Otherwise, show the assess page.
+        if (isSelfAssessment) {
+          if (selfAssessmentFromDb.length > 0) {
+            setPage('results');
+          } else {
+            setPage('assess');
+          }
+          // The selectedAdjectives state is used for the current session, not for determining the page.
+          setSelectedAdjectives(selfAssessmentFromDb);
+        }
+
         setIsWindowDataLoaded(true);
       } else {
         const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
@@ -205,7 +218,7 @@ export default function App() {
     });
 
     return () => unsubscribeWindow();
-  }, [db, userId, windowId, creatorId]);
+  }, [db, userId, windowId, creatorId, isSelfAssessment]);
 
   // PHASE 4: Set up feedback listener and determine page state (only after window data is loaded)
   useEffect(() => {
@@ -218,7 +231,7 @@ export default function App() {
 
     let appId;
     try {
-      appId = typeof __app_id !== 'undefined' ? __app_id : process.env.REACT_APP_APP_ID || 'default-app-id';
+      appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
     } catch(e) {
       appId = 'default-app-id';
       updateDebug('app_id_error', 'App ID is not available. Using default.');
@@ -238,6 +251,8 @@ export default function App() {
           doc.data().adjectives.forEach(adj => peerSelections.add(adj));
         });
         
+        // Calculate results based on the selfAssessment from the window doc
+        // and the peer feedback from this listener.
         const selfAssessment = selectedAdjectives;
         const arena = selfAssessment.filter(adj => peerSelections.has(adj));
         const blindSpot = Array.from(peerSelections).filter(adj => !selfAssessment.includes(adj));
@@ -245,7 +260,7 @@ export default function App() {
         const unknown = adjectivesList.filter(adj => !selfAssessment.includes(adj) && !peerSelections.has(adj));
         setResults({ arena, blindSpot, facade, unknown });
         
-        setPage(selfAssessment.length > 0 ? 'results' : 'assess');
+        // No need to set the page here, it's handled in the window listener
         setLoading(false); 
       }, (error) => {
           console.error("Error with creator feedback onSnapshot:", error);
@@ -278,7 +293,7 @@ export default function App() {
         unsubscribeFeedback();
       }
     };
-  }, [isWindowDataLoaded, db, userId, windowId, creatorId, isSelfAssessment, selectedAdjectives]);
+  }, [isWindowDataLoaded, db, userId, windowId, creatorId, isSelfAssessment]);
 
   const handleStartNewWindow = async () => {
     if (!db || !userId) {
@@ -291,7 +306,7 @@ export default function App() {
       const newWindowId = generateUniqueId();
       let appId;
       try {
-        appId = typeof __app_id !== 'undefined' ? __app_id : process.env.REACT_APP_APP_ID || 'default-app-id';
+        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       } catch(e) {
         appId = 'default-app-id';
         updateDebug('app_id_error', 'App ID is not available. Using default.');
@@ -346,7 +361,7 @@ export default function App() {
     try {
       let appId;
       try {
-        appId = typeof __app_id !== 'undefined' ? __app_id : process.env.REACT_APP_APP_ID || 'default-app-id';
+        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
       } catch(e) {
         appId = 'default-app-id';
         updateDebug('app_id_error', 'App ID is not available. Using default.');
