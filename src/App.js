@@ -214,7 +214,7 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
 };
 
 // Component to display the creator's window
-const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAppReady }) => {
+const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAppReady, handleCreateNewWindow }) => {
   const [copyButtonText, setCopyButtonText] = useState("Copy Link");
 
   // Function to copy link and provide feedback
@@ -236,11 +236,6 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
   const blindSpot = adjectives.filter(adj => !selfSelections.includes(adj) && feedbackSelections.has(adj));
   const facade = adjectives.filter(adj => selfSelections.includes(adj) && !feedbackSelections.has(adj));
   const unknown = adjectives.filter(adj => !selfSelections.includes(adj) && !feedbackSelections.has(adj));
-
-  const handleCreateNewWindow = () => {
-    setWindowId(null);
-    setAppState('home');
-  };
 
   return (
     <>
@@ -329,6 +324,13 @@ export default function App() {
   const [appId, setAppId] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
 
+  // Function to create a new window from anywhere in the app
+  const handleCreateNewWindow = () => {
+    setWindowId(null);
+    setAppState('home');
+    setWindowData(null); // Clear previous window data
+  };
+
 
   // Parse URL for existing windowId
   useEffect(() => {
@@ -344,7 +346,6 @@ export default function App() {
   useEffect(() => {
     const initializeFirebase = async () => {
       try {
-        // Retrieve and parse the Firebase config from the Vercel environment variable
         const firebaseConfigString = process.env.REACT_APP_FIREBASE_CONFIG;
         const appIdString = process.env.__app_id;
         let firebaseConfig = {};
@@ -528,6 +529,7 @@ export default function App() {
                 setAppState={setAppState}
                 setWindowId={setWindowId}
                 isAppReady={isAppReady}
+                handleCreateNewWindow={handleCreateNewWindow}
               />
             ) : (
               <div>
@@ -564,11 +566,6 @@ export default function App() {
         );
       case 'submitted':
         const handleUpdateFeedback = () => setAppState('feedback');
-        const handleCreateNewWindow = () => {
-          setWindowId(null);
-          setAppState('home');
-        };
-
         return (
           <>
             <h1 className={tailwindClasses.heading}>Thank you for your feedback!</h1>
