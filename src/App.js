@@ -258,7 +258,7 @@ export default function App() {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
       setLoading(false);
     }
-  }, [db, userId]);
+  }, [db, userId, windowId, creatorId]);
 
   const handleStartNewWindow = async () => {
     if (!db || !userId) {
@@ -300,7 +300,8 @@ export default function App() {
       setError("Failed to start a new window. Please try again. The error was: " + e.message);
       updateDebug('start_new_error', `Failed to create new window: ${e.message}`);
     } finally {
-      setLoading(false);
+      // The useEffect hook will now handle setting loading to false.
+      // setLoading(false); // Removed to avoid race conditions.
     }
   };
 
