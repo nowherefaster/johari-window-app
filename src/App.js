@@ -512,7 +512,7 @@ export default function App() {
               This is your unique window. Share the link below to get more feedback!
             </p>
             
-            <div className={tailwindClasses.linkContainer}>
+            <div className={`${tailwindClasses.linkContainer} items-center`}>
               <p>Your unique share link:</p>
               <div className={tailwindClasses.link}>{shareLink}</div>
               <div className="flex items-center justify-center mt-4 space-x-4">
