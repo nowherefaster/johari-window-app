@@ -515,9 +515,9 @@ export default function App() {
             <div className={tailwindClasses.linkContainer}>
               <p>Your unique share link:</p>
               <div className={tailwindClasses.link}>{shareLink}</div>
-              <div className="relative flex items-center justify-center mt-4">
+              <div className="flex items-center justify-center mt-4 space-x-4">
                 <button className={tailwindClasses.buttonPrimary} onClick={handleCopyLink}>Copy Link</button>
-                <span className={`absolute left-full ml-4 text-green-600 font-medium transition-opacity duration-300 whitespace-nowrap ${isCopied ? 'opacity-100' : 'opacity-0'}`}>
+                <span className={`text-green-600 font-medium transition-opacity duration-300 whitespace-nowrap ${isCopied ? 'opacity-100' : 'opacity-0'}`}>
                     Copied! ✅
                 </span>
               </div>
