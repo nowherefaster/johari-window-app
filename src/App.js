@@ -70,6 +70,7 @@ export default function App() {
   const [isCopied, setIsCopied] = useState(false);
   const [creatorName, setCreatorName] = useState('');
   const [teammateResponseCount, setTeammateResponseCount] = useState(0);
+  const [isWindowDataLoaded, setIsWindowDataLoaded] = useState(false);
 
   const updateDebug = (key, value) => {
     setDebugInfo(prev => ({ ...prev, [key]: value }));
@@ -165,15 +166,14 @@ export default function App() {
     }
   }, [db, userId]);
 
-  // PHASE 3: Set up listeners and determine page state based on window and feedback data
+  // PHASE 3: Set up window listener (always needed)
   useEffect(() => {
     if (!db || !userId || !windowId || !creatorId) {
-      updateDebug('phase3_status', 'Waiting for DB, userId, windowId, and creatorId to be available...');
       return;
     }
-    
-    updateDebug('phase3_status', 'Setting up listeners...');
-    
+
+    updateDebug('phase3_status_window', 'Setting up window listener...');
+
     let appId;
     try {
       appId = typeof __app_id !== 'undefined' ? __app_id : process.env.REACT_APP_APP_ID || 'default-app-id';
@@ -181,38 +181,53 @@ export default function App() {
       appId = 'default-app-id';
       updateDebug('app_id_error', 'App ID is not available. Using default.');
     }
-      
+    
     const windowRef = doc(db, `/artifacts/${appId}/users/${creatorId}/windows`, windowId);
-    const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
     
     const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
       updateDebug('onSnapshot_window', 'Window snapshot fired.');
       if (docSnap.exists()) {
         const data = docSnap.data();
         setCreatorName(data.creatorName || 'Your Teammate');
-        const userSelections = data.selfAssessment || [];
-        setSelectedAdjectives(userSelections); // Update state for editing
-        
-        if (userId === creatorId) {
-          if (userSelections.length > 0) {
-            setPage('results');
-          } else {
-            setPage('assess');
-          }
-          setLoading(false);
-        }
-        
+        // This state is for the creator's own assessment.
+        setSelectedAdjectives(data.selfAssessment || []);
+        setIsWindowDataLoaded(true);
       } else {
         const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
         setError(errorMessage);
         updateDebug('doc_exists', errorMessage);
+        setLoading(false);
       }
     }, (error) => {
       console.error("Error with window onSnapshot:", error);
       setError(`Error: ${error.message}`);
+      setLoading(false);
     });
 
+    return () => unsubscribeWindow();
+  }, [db, userId, windowId, creatorId]);
+
+  // PHASE 4: Set up feedback listener and determine page state (only after window data is loaded)
+  useEffect(() => {
+    if (!isWindowDataLoaded || !db || !userId || !windowId || !creatorId) {
+        updateDebug('phase4_status_feedback', 'Waiting for window data to be loaded...');
+        return;
+    }
+
+    updateDebug('phase4_status_feedback', 'Window data is loaded. Setting up feedback listener and determining page state.');
+
+    let appId;
+    try {
+      appId = typeof __app_id !== 'undefined' ? __app_id : process.env.REACT_APP_APP_ID || 'default-app-id';
+    } catch(e) {
+      appId = 'default-app-id';
+      updateDebug('app_id_error', 'App ID is not available. Using default.');
+    }
+    
+    const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
+
     let unsubscribeFeedback;
+
     if (isSelfAssessment) {
       // Logic for the creator: listen to feedback and calculate results.
       unsubscribeFeedback = onSnapshot(feedbackCollectionRef, (querySnap) => {
@@ -230,43 +245,40 @@ export default function App() {
         const unknown = adjectivesList.filter(adj => !selfAssessment.includes(adj) && !peerSelections.has(adj));
         setResults({ arena, blindSpot, facade, unknown });
         
+        setPage(selfAssessment.length > 0 ? 'results' : 'assess');
         setLoading(false); 
       }, (error) => {
           console.error("Error with creator feedback onSnapshot:", error);
+          setError(`Error loading feedback: ${error.message}`);
+          setLoading(false);
       });
     } else {
       // Logic for the teammate: listen to their specific feedback and set page.
       const q = query(feedbackCollectionRef, where('submittedBy', '==', userId));
       unsubscribeFeedback = onSnapshot(q, (querySnap) => {
         updateDebug('onSnapshot_feedback_teammate', 'Teammate feedback snapshot fired.');
-        
-        // Wait for creatorName to be set before deciding on the page
-        if (!creatorName) {
-            updateDebug('creatorName_not_set', 'Waiting for creatorName from window doc...');
-            return;
-        }
-
         if (!querySnap.empty) {
           const docSnap = querySnap.docs[0];
           setSelectedAdjectives(docSnap.data().adjectives);
           setPage('submitted');
         } else {
           setPage('assess');
+          setSelectedAdjectives([]); // Clear selections for a new assessment
         }
         setLoading(false);
       }, (error) => {
         console.error("Error with teammate feedback onSnapshot:", error);
+        setError(`Error loading feedback: ${error.message}`);
         setLoading(false);
       });
     }
-    
+
     return () => {
-      unsubscribeWindow();
       if (unsubscribeFeedback) {
         unsubscribeFeedback();
       }
     };
-  }, [db, userId, windowId, creatorId, isSelfAssessment, creatorName]);
+  }, [isWindowDataLoaded, db, userId, windowId, creatorId, isSelfAssessment, selectedAdjectives]);
 
   const handleStartNewWindow = async () => {
     if (!db || !userId) {
