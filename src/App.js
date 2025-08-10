@@ -159,7 +159,37 @@ export default function App() {
 
       const isCreator = userId === creatorIdFromUrl;
 
-      // Logic to determine user role and page state
+      const handleTeammateFlow = async () => {
+        updateDebug('mode_check', 'User is a teammate. Checking for existing feedback.');
+        setIsSelfAssessment(false);
+        const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
+        
+        try {
+          const querySnapshot = await getDocs(feedbackCollectionRef);
+          let existingFeedback = null;
+          querySnapshot.forEach(docSnap => {
+            if (docSnap.data().submittedBy === userId) {
+              existingFeedback = docSnap.data();
+            }
+          });
+
+          if (existingFeedback) {
+            updateDebug('existing_feedback_found', `Found existing feedback for user ${userId}. Redirecting to submitted page.`);
+            setSelectedAdjectives(existingFeedback.adjectives);
+            setPage('submitted');
+          } else {
+            updateDebug('no_existing_feedback', `No existing feedback found for user ${userId}. Redirecting to assessment page.`);
+            setPage('assess');
+          }
+        } catch (e) {
+          console.error("Error fetching feedback:", e);
+          setError("Failed to fetch existing feedback. " + e.message);
+          updateDebug('fetch_feedback_error', e.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
       if (isCreator) {
         updateDebug('mode_check', 'User is the creator. Setting up results listeners.');
         setIsSelfAssessment(true);
@@ -218,33 +248,7 @@ export default function App() {
         });
         return () => unsubscribeWindow();
       } else if (mode === 'feedback') {
-        updateDebug('mode_check', 'User is a teammate. Checking for existing feedback.');
-        setIsSelfAssessment(false);
-        const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
-        
-        getDocs(feedbackCollectionRef).then(querySnapshot => {
-          let existingFeedback = null;
-          querySnapshot.forEach(docSnap => {
-            if (docSnap.data().submittedBy === userId) {
-              existingFeedback = docSnap.data();
-              return;
-            }
-          });
-
-          if (existingFeedback) {
-            updateDebug('existing_feedback_found', `Found existing feedback for user ${userId}. Redirecting to submitted page.`);
-            setSelectedAdjectives(existingFeedback.adjectives);
-            setPage('submitted');
-          } else {
-            updateDebug('no_existing_feedback', `No existing feedback found for user ${userId}. Redirecting to assessment page.`);
-            setPage('assess');
-          }
-          setLoading(false);
-        }).catch(e => {
-          console.error("Error fetching feedback:", e);
-          setError("Failed to fetch existing feedback.");
-          setLoading(false);
-        });
+        handleTeammateFlow();
       }
     } else {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
@@ -384,12 +388,12 @@ export default function App() {
       return <p className={tailwindClasses.loading}>Loading...</p>;
     }
     
-    if (error && error.includes("Firebase configuration is not available")) {
+    if (error) {
       return (
         <div className="text-center p-4">
-          <h1 className="text-3xl font-bold text-red-600">⚠️ Configuration Error</h1>
+          <h1 className="text-3xl font-bold text-red-600">⚠️ Error</h1>
           <p className="mt-4 text-lg text-red-500">
-            The Firebase configuration is missing. This app cannot run without it.
+            {error}
           </p>
           <div className={tailwindClasses.debugPanel}>
             <h3 className={tailwindClasses.debugTitle}>Current Debug Log</h3>
@@ -399,10 +403,6 @@ export default function App() {
           </div>
         </div>
       );
-    }
-
-    if (error) {
-      return <p className={tailwindClasses.error}>Error: {error}</p>;
     }
 
     switch (page) {
