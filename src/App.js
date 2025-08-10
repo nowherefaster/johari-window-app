@@ -44,6 +44,77 @@ const adjectives = [
   "Trustworthy", "Warm", "Wise", "Witty"
 ];
 
+// Helper component for the floating help button
+const HelpButton = ({ onClick }) => (
+  <button
+    className="fixed top-4 right-4 z-50 p-3 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition-colors duration-200"
+    onClick={onClick}
+    aria-label="Open help guide"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm-1 15h2v-6h-2v6zm0-8h2V7h-2v2z" />
+    </svg>
+  </button>
+);
+
+// Helper component for the help modal
+const HelpModal = ({ show, onClose }) => {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900 bg-opacity-75 overflow-y-auto" onClick={onClose}>
+      <div className="relative w-full max-w-2xl max-h-full bg-white rounded-lg shadow-xl p-6 md:p-8" onClick={e => e.stopPropagation()}>
+        <button
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors duration-200"
+          onClick={onClose}
+          aria-label="Close help guide"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">Guide to the Johari Window Team Exercise</h2>
+        <div className="space-y-6 text-gray-700 overflow-y-auto max-h-[80vh]">
+          <div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">What is the Johari Window?</h3>
+            <p>
+              The Johari Window is a communication tool designed to help people better understand their relationship with themselves and others. It's a simple and powerful way to map self-perception and external perception, leading to greater self-awareness and team dynamics.
+            </p>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">The Four Quadrants</h3>
+            <div className="space-y-4">
+              <p>
+                <strong>Arena (Open Self):</strong> This quadrant contains adjectives selected by both you and your teammates. These are the traits you both recognize, representing your open and public self.
+              </p>
+              <p>
+                <strong>Blind Spot:</strong> This quadrant contains adjectives selected by your teammates but not by you. These are traits others see in you that you are unaware of, offering a valuable opportunity for self-discovery.
+              </p>
+              <p>
+                <strong>Facade (Hidden Self):</strong> This quadrant contains adjectives selected by you but not by your teammates. These are traits you know about yourself but keep hidden from others.
+              </p>
+              <p>
+                <strong>Unknown:</strong> This quadrant contains adjectives that were not selected by either you or your teammates. These represent traits that are yet to be discovered by anyone.
+              </p>
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">How to Use this Tool</h3>
+            <ol className="list-decimal list-inside space-y-2">
+              <li><strong>Step 1: Create your window.</strong> Begin by entering your name and selecting the five adjectives that you feel best describe you.</li>
+              <li><strong>Step 2: Share the link.</strong> Once you've created your window, a unique link will be generated. Share this link with your teammates.</li>
+              <li><strong>Step 3: Provide feedback.</strong> Teammates will use the link to select five adjectives that they feel best describe you.</li>
+              <li><strong>Step 4: View your results.</strong> As feedback is submitted, your Johari Window will be populated in real-time, helping you visualize the collective perceptions.</li>
+              <li><strong>Step 5: Discuss and grow.</strong> The most important step is to use these results as a starting point for open and honest conversations with your team.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 // Component for the welcome page with name input
 const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady, setSnackbarMessage }) => {
   const handleStart = () => {
@@ -474,6 +545,7 @@ export default function App() {
   const [appId, setAppId] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
   const [snackbarMessage, setSnackbarMessage] = useState(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   const handleCreateNewWindow = () => {
     setWindowId(null);
@@ -759,6 +831,8 @@ export default function App() {
 
   return (
     <FirebaseContext.Provider value={{ db }}>
+      <HelpButton onClick={() => setShowHelp(true)} />
+      <HelpModal show={showHelp} onClose={() => setShowHelp(false)} />
       <div className={tailwindClasses.container}>
         <div className={tailwindClasses.card}>
           {renderContent()}
