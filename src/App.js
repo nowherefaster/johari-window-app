@@ -192,20 +192,19 @@ export default function App() {
         setCreatorName(data.creatorName || 'Your Teammate');
         const selfAssessmentFromDb = data.selfAssessment || [];
         
-        // This is the creator's self-assessment data.
+        // Update the self-assessment state regardless of who the user is.
         setSelectedAdjectives(selfAssessmentFromDb);
-
-        // Crucial Fix: Set initial page state for creator here.
-        if (isSelfAssessment) {
+        setIsWindowDataLoaded(true); // Signal that the window data is ready
+        
+        // Corrected logic: Set the initial page state for the creator based on self-assessment.
+        // The teammate's page state will be set by the feedback listener.
+        if (userId === creatorId) {
           if (selfAssessmentFromDb.length > 0) {
             setPage('results');
           } else {
             setPage('assess');
           }
         }
-        
-        // This unblocks the next useEffect for both creator and teammate.
-        setIsWindowDataLoaded(true);
       } else {
         const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
         setError(errorMessage);
@@ -219,9 +218,9 @@ export default function App() {
     });
 
     return () => unsubscribeWindow();
-  }, [db, userId, windowId, creatorId, isSelfAssessment]);
+  }, [db, userId, windowId, creatorId]);
 
-  // PHASE 4: Set up feedback listener (always needed when window data is ready)
+  // PHASE 4: Set up feedback listener and handle final page load
   useEffect(() => {
     if (!isWindowDataLoaded || !db || !userId || !windowId || !creatorId) {
         updateDebug('phase4_status_feedback', 'Waiting for window data to be loaded...');
@@ -243,7 +242,7 @@ export default function App() {
     let unsubscribeFeedback;
 
     if (isSelfAssessment) {
-      // Logic for the creator: listen to feedback and set peer adjectives state
+      // Logic for the creator: listen to all feedback
       unsubscribeFeedback = onSnapshot(feedbackCollectionRef, (querySnap) => {
         updateDebug('onSnapshot_feedback_creator', 'Feedback snapshot fired for creator.');
         setTeammateResponseCount(querySnap.size);
@@ -252,14 +251,14 @@ export default function App() {
           doc.data().adjectives.forEach(adj => peerSelections.add(adj));
         });
         setPeerAdjectives(peerSelections);
-        setLoading(false);
+        setLoading(false); // End loading only after feedback is processed
       }, (error) => {
           console.error("Error with creator feedback onSnapshot:", error);
-          setError(`Error loading feedback: ${e.message}`);
+          setError(`Error loading feedback: ${error.message}`);
           setLoading(false);
       });
     } else {
-      // Logic for the teammate: listen to their specific feedback and set page.
+      // Logic for the teammate: listen to their specific feedback
       const q = query(feedbackCollectionRef, where('submittedBy', '==', userId));
       unsubscribeFeedback = onSnapshot(q, (querySnap) => {
         updateDebug('onSnapshot_feedback_teammate', 'Teammate feedback snapshot fired.');
@@ -271,10 +270,10 @@ export default function App() {
           setPage('assess');
           setSelectedAdjectives([]); // Clear selections for a new assessment
         }
-        setLoading(false);
+        setLoading(false); // End loading for teammate
       }, (error) => {
         console.error("Error with teammate feedback onSnapshot:", error);
-        setError(`Error loading feedback: ${e.message}`);
+        setError(`Error loading feedback: ${error.message}`);
         setLoading(false);
       });
     }
