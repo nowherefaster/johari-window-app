@@ -142,12 +142,12 @@ export default function App() {
     const urlParams = new URLSearchParams(window.location.search);
     const id = urlParams.get('id');
     const creatorIdFromUrl = urlParams.get('creatorId');
+    const mode = urlParams.get('mode');
     
     if (id && creatorIdFromUrl) {
       updateDebug('url_params', `Found windowId: ${id}, creatorId: ${creatorIdFromUrl}`);
       setWindowId(id);
       setCreatorId(creatorIdFromUrl);
-      const mode = urlParams.get('mode');
       
       let appId;
       try {
@@ -159,22 +159,10 @@ export default function App() {
 
       const isCreator = userId === creatorIdFromUrl;
 
-      // Separate the logic based on the mode.
-      if (mode === 'feedback' || !isCreator) {
-        updateDebug('mode_check', 'Mode is "feedback" or user is not creator. Setting page to "assess".');
-        setIsSelfAssessment(false);
-        setPage('assess');
-        setLoading(false);
-        
-        const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
-        setShareLink(newShareLink);
-        updateDebug('share_link_set', newShareLink);
-
-      } else if (isCreator) {
-        // This is the creator's link, set up listeners for results.
+      // Logic to determine user role and page state
+      if (isCreator) {
         updateDebug('mode_check', 'User is the creator. Setting up results listeners.');
         setIsSelfAssessment(true);
-        
         const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
         setShareLink(newShareLink);
         updateDebug('share_link_set', newShareLink);
@@ -229,6 +217,11 @@ export default function App() {
           }
         });
         return () => unsubscribeWindow();
+      } else if (mode === 'feedback' && !isCreator) {
+        updateDebug('mode_check', 'User is not creator. Setting page to "assess" for feedback.');
+        setIsSelfAssessment(false);
+        setPage('assess');
+        setLoading(false);
       }
     } else {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
@@ -267,9 +260,8 @@ export default function App() {
       setCreatorId(userId);
       setIsSelfAssessment(true);
 
-      const newShareLink = `${window.location.origin}${window.location.pathname}?id=${newWindowId}&mode=feedback&creatorId=${userId}`;
-      setShareLink(newShareLink);
-      window.history.pushState({}, '', newShareLink);
+      const creatorLink = `${window.location.origin}${window.location.pathname}?id=${newWindowId}&creatorId=${userId}`;
+      window.history.pushState({}, '', creatorLink);
       
     } catch (e) {
       console.error("Error starting new window:", e);
