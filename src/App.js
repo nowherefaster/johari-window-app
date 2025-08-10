@@ -147,7 +147,7 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
   return (
     <>
       <h1 className={tailwindClasses.heading}>{windowId ? 'Edit Your Selections' : `Hello, ${creatorName}!`}</h1>
-      <p className={tailwindClasses.subheading}>Now, select the adjectives you feel best describe you.</p>
+      <p className={tailwindClasses.subheading}>Now, select the five adjectives you feel best describe you.</p>
       {submissionStatus && (
         <div className={`${tailwindClasses.feedbackContainer} ${submissionStatus.type === 'error' ? tailwindClasses.errorFeedback : tailwindClasses.successFeedback}`}>
           {submissionStatus.message}
@@ -227,7 +227,7 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
   return (
     <>
       <h1 className={tailwindClasses.heading}>Give Feedback to {creatorName}</h1>
-      <p className={tailwindClasses.subheading}>Select the adjectives you feel best describe them.</p>
+      <p className={tailwindClasses.subheading}>Now, select the five adjectives you feel best describe them.</p>
       {submissionStatus && (
         <div className={`${tailwindClasses.feedbackContainer} ${submissionStatus.type === 'error' ? tailwindClasses.errorFeedback : tailwindClasses.successFeedback}`}>
           {submissionStatus.message}
