@@ -1,7 +1,7 @@
 import React, { useState, useEffect, createContext } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, getDocs } from 'firebase/firestore';
 
 // Define the Firebase context to pass services to components
 const FirebaseContext = createContext(null);
@@ -67,6 +67,7 @@ export default function App() {
   const [shareLink, setShareLink] = useState('');
   const [debugInfo, setDebugInfo] = useState({});
   const [hasSubmittedSelfAssessment, setHasSubmittedSelfAssessment] = useState(false);
+  const [hasSubmittedFeedback, setHasSubmittedFeedback] = useState(false);
 
   const updateDebug = (key, value) => {
     setDebugInfo(prev => ({ ...prev, [key]: value }));
@@ -80,7 +81,6 @@ export default function App() {
         let firebaseConfig;
         let rawConfig = "";
         try {
-          // Use REACT_APP_FIREBASE_CONFIG for Vercel deployment, fallback to __firebase_config for Canvas
           rawConfig = process.env.REACT_APP_FIREBASE_CONFIG || __firebase_config;
           updateDebug('raw_firebase_config', rawConfig);
           firebaseConfig = JSON.parse(rawConfig);
@@ -97,7 +97,6 @@ export default function App() {
         
         let initialAuthToken;
         try {
-          // Use REACT_APP_INITIAL_AUTH_TOKEN for Vercel, fallback to __initial_auth_token for Canvas
           initialAuthToken = process.env.REACT_APP_INITIAL_AUTH_TOKEN || __initial_auth_token;
         } catch (e) {
           initialAuthToken = null;
@@ -217,17 +216,41 @@ export default function App() {
           }
         });
         return () => unsubscribeWindow();
-      } else if (mode === 'feedback' && !isCreator) {
-        updateDebug('mode_check', 'User is not creator. Setting page to "assess" for feedback.');
+      } else if (mode === 'feedback') {
+        updateDebug('mode_check', 'User is a teammate. Checking for existing feedback.');
         setIsSelfAssessment(false);
-        setPage('assess');
-        setLoading(false);
+        const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
+        const q = query(feedbackCollectionRef);
+        
+        getDocs(q).then(querySnapshot => {
+          let existingFeedback = null;
+          querySnapshot.forEach(docSnap => {
+            if (docSnap.data().submittedBy === userId) {
+              existingFeedback = docSnap.data();
+            }
+          });
+
+          if (existingFeedback) {
+            updateDebug('existing_feedback_found', `Found existing feedback for user ${userId}. Redirecting to submitted page.`);
+            setSelectedAdjectives(existingFeedback.adjectives);
+            setHasSubmittedFeedback(true);
+            setPage('submitted');
+          } else {
+            updateDebug('no_existing_feedback', `No existing feedback found for user ${userId}. Redirecting to assessment page.`);
+            setPage('assess');
+          }
+          setLoading(false);
+        }).catch(e => {
+          console.error("Error fetching feedback:", e);
+          setError("Failed to fetch existing feedback.");
+          setLoading(false);
+        });
       }
     } else {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
       setLoading(false);
     }
-  }, [db, userId, windowId, creatorId]); // Added dependencies to trigger on state change
+  }, [db, userId, windowId, creatorId]);
 
   const handleStartNewWindow = async () => {
     if (!db || !userId) {
@@ -301,12 +324,34 @@ export default function App() {
         updateDebug('assessment_saved', `Self-assessment saved with ${selectedAdjectives.length} adjectives.`);
       } else {
         const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
-        await addDoc(feedbackCollectionRef, {
-          adjectives: selectedAdjectives,
-          submittedBy: userId,
-          submittedAt: new Date(),
+        
+        // Find existing feedback document
+        const existingFeedbackQuery = query(feedbackCollectionRef);
+        const querySnapshot = await getDocs(existingFeedbackQuery);
+        let existingFeedbackDoc = null;
+        querySnapshot.forEach(docSnap => {
+          if (docSnap.data().submittedBy === userId) {
+            existingFeedbackDoc = docSnap.id;
+          }
         });
-        updateDebug('assessment_saved', 'Feedback submitted.');
+        
+        // If feedback exists, update it, otherwise create a new one
+        if (existingFeedbackDoc) {
+          const docRef = doc(feedbackCollectionRef, existingFeedbackDoc);
+          await updateDoc(docRef, { adjectives: selectedAdjectives });
+          updateDebug('feedback_updated', 'Existing feedback updated.');
+        } else {
+          await addDoc(feedbackCollectionRef, {
+            adjectives: selectedAdjectives,
+            submittedBy: userId,
+            submittedAt: new Date(),
+          });
+          updateDebug('feedback_submitted', 'New feedback submitted.');
+        }
+
+        // Set the page state for the teammate
+        setHasSubmittedFeedback(true);
+        setPage('submitted');
       }
     } catch (e) {
       console.error("Error saving assessment:", e);
@@ -449,6 +494,27 @@ export default function App() {
             <button className={`${tailwindClasses.button} mt-8`} onClick={() => window.location.href = window.location.origin + window.location.pathname}>
               Create Another Window
             </button>
+          </>
+        );
+      case 'submitted':
+        return (
+          <>
+            <h1 className={tailwindClasses.heading}>Thank you for your feedback!</h1>
+            <p className={tailwindClasses.subheading}>Your selections have been successfully submitted.</p>
+            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+              <button
+                className={tailwindClasses.button}
+                onClick={() => setPage('assess')}
+              >
+                Update My Feedback
+              </button>
+              <button
+                className={tailwindClasses.button}
+                onClick={handleStartNewWindow}
+              >
+                Create My Own Window
+              </button>
+            </div>
           </>
         );
       default:
