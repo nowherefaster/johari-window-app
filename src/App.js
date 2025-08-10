@@ -183,7 +183,8 @@ export default function App() {
       updateDebug('app_id_error', 'App ID is not available. Using default.');
     }
     
-    const windowRef = doc(db, `/artifacts/${appId}/users/${creatorId}/windows`, windowId);
+    // Use a public path that any authenticated user can read
+    const windowRef = doc(db, `/artifacts/${appId}/public/windows`, windowId);
     
     const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
       updateDebug('onSnapshot_window', 'Window snapshot fired.');
@@ -315,16 +316,18 @@ export default function App() {
         appId = 'default-app-id';
         updateDebug('app_id_error', 'App ID is not available. Using default.');
       }
-      const userDocRef = doc(db, `/artifacts/${appId}/users/${userId}/windows`, newWindowId);
+      
+      // Use the new public path for the main window document
+      const windowDocRef = doc(db, `/artifacts/${appId}/public/windows`, newWindowId);
 
-      await setDoc(userDocRef, {
+      await setDoc(windowDocRef, {
         creatorId: userId,
         createdAt: new Date(),
         selfAssessment: [],
         creatorName: creatorName,
       });
       updateDebug('new_window_created', `Successfully created new window with ID: ${newWindowId}`);
-      updateDebug('new_window_path', `/artifacts/${appId}/users/${userId}/windows/${newWindowId}`);
+      updateDebug('new_window_path', `/artifacts/${appId}/public/windows/${newWindowId}`);
       
       setWindowId(newWindowId);
       setCreatorId(userId);
@@ -338,6 +341,8 @@ export default function App() {
       console.error("Error starting new window:", e);
       setError("Failed to start a new window. Please try again. The error was: " + e.message);
       updateDebug('start_new_error', `Failed to create new window: ${e.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -371,8 +376,9 @@ export default function App() {
         updateDebug('app_id_error', 'App ID is not available. Using default.');
       }
       if (isSelfAssessment) {
-        const userDocRef = doc(db, `/artifacts/${appId}/users/${creatorId}/windows`, windowId);
-        await updateDoc(userDocRef, {
+        // Creator's self-assessment path needs to change as well.
+        const windowDocRef = doc(db, `/artifacts/${appId}/public/windows`, windowId);
+        await updateDoc(windowDocRef, {
           selfAssessment: selectedAdjectives,
         });
         updateDebug('assessment_saved', `Self-assessment saved with ${selectedAdjectives.length} adjectives.`);
