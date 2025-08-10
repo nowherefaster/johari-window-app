@@ -459,7 +459,7 @@ export default function App() {
               <p>Your unique share link:</p>
               <div className={tailwindClasses.link}>{shareLink}</div>
               <div className="flex items-center justify-center space-x-2 mt-4">
-                <button className={tailwindClasses.copyButton} onClick={handleCopyLink}>Copy Link</button>
+                <button className={tailwindClasses.buttonPrimary} onClick={handleCopyLink}>Copy Link</button>
                 {isCopied && <span className="text-green-600 font-medium">Copied! ✅</span>}
               </div>
               <p>Your User ID for Firestore: {userId}</p>
