@@ -12,7 +12,8 @@ const tailwindClasses = {
   card: "bg-white p-8 rounded-lg shadow-xl max-w-2xl w-full text-center space-y-6",
   heading: "text-3xl font-bold text-gray-800",
   subheading: "text-lg text-gray-600",
-  button: "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed",
+  buttonPrimary: "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed",
+  buttonSecondary: "bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out",
   input: "w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500",
   adjectiveGrid: "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-4",
   adjectiveButton: "py-2 px-4 rounded-lg border-2 font-medium text-sm transition duration-150 ease-in-out",
@@ -67,6 +68,7 @@ export default function App() {
   const [shareLink, setShareLink] = useState('');
   const [debugInfo, setDebugInfo] = useState({});
   const [hasSubmittedSelfAssessment, setHasSubmittedSelfAssessment] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   const updateDebug = (key, value) => {
     setDebugInfo(prev => ({ ...prev, [key]: value }));
@@ -376,7 +378,8 @@ export default function App() {
     textarea.select();
     try {
       document.execCommand('copy');
-      console.log("Link copied to clipboard!");
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
@@ -411,7 +414,7 @@ export default function App() {
           <>
             <h1 className={tailwindClasses.heading}>Discover Your Johari Window</h1>
             <p className={tailwindClasses.subheading}>A simple tool to help you and your team better understand your interpersonal dynamics.</p>
-            <button className={tailwindClasses.button} onClick={handleStartNewWindow} disabled={loading || !userId}>
+            <button className={tailwindClasses.buttonPrimary} onClick={handleStartNewWindow} disabled={loading || !userId}>
               Start My Window
             </button>
           </>
@@ -439,7 +442,7 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <button className={tailwindClasses.button} onClick={handleSaveAssessment} disabled={loading || selectedAdjectives.length === 0}>
+            <button className={tailwindClasses.buttonPrimary} onClick={handleSaveAssessment} disabled={loading || selectedAdjectives.length === 0}>
               {isSelfAssessment ? "Submit My Selections" : "Submit Feedback"}
             </button>
           </>
@@ -455,7 +458,10 @@ export default function App() {
             <div className={tailwindClasses.linkContainer}>
               <p>Your unique share link:</p>
               <div className={tailwindClasses.link}>{shareLink}</div>
-              <button className={tailwindClasses.copyButton} onClick={handleCopyLink}>Copy Link</button>
+              <div className="flex items-center space-x-2">
+                <button className={tailwindClasses.copyButton} onClick={handleCopyLink}>Copy Link</button>
+                {isCopied && <span className="text-green-600 font-medium">Copied! ✅</span>}
+              </div>
               <p>Your User ID for Firestore: {userId}</p>
               <p>Creator's User ID: {creatorId}</p>
             </div>
@@ -489,7 +495,7 @@ export default function App() {
               </div>
             )}
             
-            <button className={`${tailwindClasses.button} mt-8`} onClick={handleCreateNewWindow}>
+            <button className={`${tailwindClasses.buttonSecondary} mt-8`} onClick={handleCreateNewWindow}>
               Create Another Window
             </button>
           </>
@@ -501,13 +507,13 @@ export default function App() {
             <p className={tailwindClasses.subheading}>Your selections have been successfully submitted.</p>
             <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
               <button
-                className={tailwindClasses.button}
+                className={tailwindClasses.buttonSecondary}
                 onClick={handleUpdateFeedback}
               >
                 Update My Feedback
               </button>
               <button
-                className={tailwindClasses.button}
+                className={tailwindClasses.buttonPrimary}
                 onClick={handleCreateNewWindow}
               >
                 Create My Own Window
