@@ -502,7 +502,11 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <button className={tailwindClasses.buttonPrimary} onClick={handleSaveAssessment} disabled={loading || selectedAdjectives.length === 0}>
+            <button
+              className={tailwindClasses.buttonPrimary}
+              onClick={handleSaveAssessment}
+              disabled={loading || selectedAdjectives.length === 0}
+            >
               {isSelfAssessment ? "Submit My Selections" : "Submit Feedback"}
             </button>
           </>
