@@ -183,7 +183,7 @@ export default function App() {
       updateDebug('app_id_error', 'App ID is not available. Using default.');
     }
     
-    // Use a public path that any authenticated user can read
+    // Path for the window document is now in the public space
     const windowRef = doc(db, `/artifacts/${appId}/public/data/windows`, windowId);
     
     const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
@@ -197,8 +197,6 @@ export default function App() {
         setSelectedAdjectives(selfAssessmentFromDb);
         setIsWindowDataLoaded(true); // Signal that the window data is ready
         
-        // Corrected logic: Set the initial page state for the creator based on self-assessment.
-        // The teammate's page state will be set by the feedback listener.
         if (userId === creatorId) {
           if (selfAssessmentFromDb.length > 0) {
             setPage('results');
@@ -207,14 +205,14 @@ export default function App() {
           }
         }
       } else {
-        const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
+        const errorMessage = "Error: This Johari Window does not exist or you don't have access to it. It may have been deleted or the URL is incorrect.";
         setError(errorMessage);
         updateDebug('doc_exists', errorMessage);
         setLoading(false);
       }
     }, (error) => {
       console.error("Error with window onSnapshot:", error);
-      setError(`Error: ${error.message}`);
+      setError(`Error: ${error.message}. This may be due to a security permissions issue.`);
       setLoading(false);
     });
 
@@ -238,7 +236,8 @@ export default function App() {
       updateDebug('app_id_error', 'App ID is not available. Using default.');
     }
     
-    const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
+    // Path for feedback is now also in the public space
+    const feedbackCollectionRef = collection(db, `/artifacts/${appId}/public/data/windows/${windowId}/feedback`);
 
     let unsubscribeFeedback;
 
@@ -317,7 +316,7 @@ export default function App() {
         updateDebug('app_id_error', 'App ID is not available. Using default.');
       }
       
-      // Use the new public path for the main window document
+      // Store the window in the public path.
       const windowDocRef = doc(db, `/artifacts/${appId}/public/data/windows`, newWindowId);
 
       await setDoc(windowDocRef, {
@@ -376,7 +375,7 @@ export default function App() {
         updateDebug('app_id_error', 'App ID is not available. Using default.');
       }
       if (isSelfAssessment) {
-        // Creator's self-assessment path needs to change as well.
+        // Creator's self-assessment path is now in the public space.
         const windowDocRef = doc(db, `/artifacts/${appId}/public/data/windows`, windowId);
         await updateDoc(windowDocRef, {
           selfAssessment: selectedAdjectives,
@@ -384,7 +383,7 @@ export default function App() {
         updateDebug('assessment_saved', `Self-assessment saved with ${selectedAdjectives.length} adjectives.`);
         // The onSnapshot listener will update the page and results
       } else {
-        const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
+        const feedbackCollectionRef = collection(db, `/artifacts/${appId}/public/data/windows/${windowId}/feedback`);
         
         const q = query(feedbackCollectionRef, where('submittedBy', '==', userId));
         const querySnapshot = await getDocs(q);
