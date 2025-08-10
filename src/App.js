@@ -203,9 +203,10 @@ export default function App() {
           }
         }
         
-        // Always update the selectedAdjectives state from the DB for the current user's selections
+        // Always update the selectedAdjectives state from the DB for the creator's self-assessment.
         setSelectedAdjectives(selfAssessmentFromDb);
 
+        // This is the crucial fix: always set the flag to true once the window doc is loaded
         setIsWindowDataLoaded(true);
       } else {
         const errorMessage = "Error: This Johari Window does not exist or you don't have access to it.";
