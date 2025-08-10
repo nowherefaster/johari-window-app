@@ -75,6 +75,13 @@ export default function App() {
     setDebugInfo(prev => ({ ...prev, [key]: value }));
   };
 
+  // Function to create and set the share link
+  const generateShareLink = (id, creator) => {
+    const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creator}`;
+    setShareLink(newShareLink);
+    updateDebug('share_link_set', newShareLink);
+  };
+
   // PHASE 1: Initialize Firebase and handle authentication
   useEffect(() => {
     const initFirebase = async () => {
@@ -151,10 +158,7 @@ export default function App() {
       setWindowId(id);
       setCreatorId(creatorIdFromUrl);
       setIsSelfAssessment(userId === creatorIdFromUrl);
-
-      const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
-      setShareLink(newShareLink);
-      updateDebug('share_link_set', newShareLink);
+      generateShareLink(id, creatorIdFromUrl);
     } else {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
       setLoading(false);
@@ -289,6 +293,7 @@ export default function App() {
 
       const creatorLink = `${window.location.origin}${window.location.pathname}?id=${newWindowId}&creatorId=${userId}`;
       window.history.pushState({}, '', creatorLink);
+      generateShareLink(newWindowId, userId);
       
     } catch (e) {
       console.error("Error starting new window:", e);
