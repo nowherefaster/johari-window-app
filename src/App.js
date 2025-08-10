@@ -1,7 +1,7 @@
 import React, { useState, useEffect, createContext } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, query, where, getDocs, getDoc } from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, getDoc } from 'firebase/firestore';
 
 // Define the Firebase context to pass services to components
 const FirebaseContext = createContext(null);
@@ -30,9 +30,6 @@ const tailwindClasses = {
   quadrantContainer: "grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-left",
   quadrant: "bg-gray-50 p-4 rounded-lg",
   quadrantTitle: "text-lg font-bold mb-2",
-  debugPanel: "bg-gray-800 text-gray-200 p-4 rounded-lg mt-8 max-w-2xl w-full font-mono text-left text-xs",
-  debugTitle: "text-lg font-bold mb-2 text-white",
-  debugLog: "whitespace-pre-wrap break-all",
 };
 
 const adjectives = [
@@ -98,8 +95,8 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
     }
 
     try {
-      // Use the correct Firestore path for public data
-      const windowsCollection = collection(db, "artifacts", appId, "public", "data", "windows");
+      // Use a fixed path for public data since appId is not available in Vercel
+      const windowsCollection = collection(db, "windows");
       const docRef = await addDoc(windowsCollection, {
         creatorName: creatorName,
         selfSelections: selectedAdjectives,
@@ -166,8 +163,8 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
 
   const handleSubmitFeedback = async () => {
     try {
-      // Use the correct Firestore path
-      const docRef = doc(db, "artifacts", appId, "public", "data", "windows", windowId);
+      // Use a fixed path for public data since appId is not available in Vercel
+      const docRef = doc(db, "windows", windowId);
       // Retrieve the current feedback
       const windowDoc = await getDoc(docRef);
       const currentFeedback = windowDoc.data().feedback || {};
@@ -320,7 +317,6 @@ export default function App() {
   const [windowId, setWindowId] = useState(null);
   const [creatorName, setCreatorName] = useState('');
   const [windowData, setWindowData] = useState(null);
-  const [debugInfo, setDebugInfo] = useState({});
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
@@ -340,68 +336,55 @@ export default function App() {
 
   // Firebase Initialization and Auth
   useEffect(() => {
-    const initializeFirebase = async (retryCount = 0) => {
-      // Check for global variables. If they aren't here after a few retries, it's a critical error.
-      if (typeof __app_id === 'undefined' || typeof REACT_APP_FIREBASE_CONFIG === 'undefined') {
-        if (retryCount < 5) {
-          // Wait and retry, as the environment variables might be loaded asynchronously.
-          setTimeout(() => initializeFirebase(retryCount + 1), 500 * (2 ** retryCount));
-        } else {
-          setAppError("The application ID or Firebase configuration is missing. This is a critical error and the app cannot function.");
-        }
-        return;
-      }
-      
+    const initializeFirebase = async () => {
       try {
-        const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        setAppId(currentAppId);
-        
-        const firebaseConfigString = REACT_APP_FIREBASE_CONFIG;
+        // Retrieve and parse the Firebase config from the Vercel environment variable
+        const firebaseConfigString = process.env.REACT_APP_FIREBASE_CONFIG;
         let firebaseConfig = {};
 
-        if (firebaseConfigString) {
-          try {
-            firebaseConfig = JSON.parse(firebaseConfigString);
-          } catch (e) {
-            setAppError("Firebase configuration is malformed. Check the JSON syntax.");
-            setDebugInfo(prev => ({ ...prev, error: e.message, message: "Firebase init failed due to malformed JSON." }));
-            return;
-          }
+        if (!firebaseConfigString) {
+          setAppError("Firebase configuration is missing. Please set the REACT_APP_FIREBASE_CONFIG environment variable.");
+          return;
+        }
+
+        try {
+          firebaseConfig = JSON.parse(firebaseConfigString);
+        } catch (e) {
+          setAppError("Firebase configuration is malformed. Check the JSON syntax of REACT_APP_FIREBASE_CONFIG.");
+          return;
         }
 
         if (!firebaseConfig || !firebaseConfig.projectId) {
           setAppError("Firebase configuration is invalid. The 'projectId' is missing.");
-          setDebugInfo(prev => ({ ...prev, error: "'projectId' not provided in firebase.initializeApp.", message: "Firebase init failed." }));
           return;
         }
         
+        // A placeholder for appId since it's not a global variable in Vercel.
+        // It's a good practice to use a unique app name.
+        const currentAppId = firebaseConfig.projectId;
+        setAppId(currentAppId);
+
         const app = initializeApp(firebaseConfig, currentAppId);
         const firestore = getFirestore(app);
         const authService = getAuth(app);
         setDb(firestore);
         setAuth(authService);
-
-        if (typeof __initial_auth_token !== 'undefined') {
-          await signInWithCustomToken(authService, __initial_auth_token);
-        } else {
-          await signInAnonymously(authService);
-        }
+        
+        // Sign in anonymously, as per the original design
+        await signInAnonymously(authService);
 
         onAuthStateChanged(authService, (user) => {
           if (user) {
             setUserId(user.uid);
             setIsAppReady(true);
-            setDebugInfo(prev => ({ ...prev, appId: currentAppId, userId: user.uid, message: "User signed in. App ready." }));
           } else {
             setUserId(null);
             setIsAppReady(true);
-            setDebugInfo(prev => ({ ...prev, appId: currentAppId, userId: null, message: "No user signed in. App ready." }));
           }
         });
       } catch (e) {
         console.error("Firebase initialization failed:", e);
         setAppError("Failed to initialize Firebase. Check your configuration.");
-        setDebugInfo(prev => ({ ...prev, error: e.message, message: "Firebase init failed." }));
         setIsAppReady(false);
       }
     };
@@ -413,39 +396,37 @@ export default function App() {
 
   // Firestore Data Listener for creator's window
   useEffect(() => {
-    if (!db || !windowId || !isAppReady || appState !== 'windowCreated' || !appId) return;
+    if (!db || !windowId || !isAppReady || appState !== 'windowCreated') return;
 
-    const unsub = onSnapshot(doc(db, "artifacts", appId, "public", "data", "windows", windowId), (docSnap) => {
+    // The collection path is fixed since we're not using the special canvas environment path
+    const unsub = onSnapshot(doc(db, "windows", windowId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setWindowData(data);
-        setDebugInfo(prev => ({ ...prev, windowData: data, message: `Window data updated for ${windowId}` }));
-      } else {
-        setDebugInfo(prev => ({ ...prev, message: "No such document!", windowId: windowId }));
       }
     });
 
     return () => unsub();
-  }, [db, windowId, isAppReady, appState, appId]);
+  }, [db, windowId, isAppReady, appState]);
 
   // Fetch creator's name for feedback page
   useEffect(() => {
-    if (!db || !windowId || appState !== 'feedback' || !appId) return;
+    if (!db || !windowId || appState !== 'feedback') return;
 
     const fetchCreatorName = async () => {
-      const docRef = doc(db, "artifacts", appId, "public", "data", "windows", windowId);
+      // The collection path is fixed since we're not using the special canvas environment path
+      const docRef = doc(db, "windows", windowId);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         setCreatorName(docSnap.data().creatorName);
-        setDebugInfo(prev => ({ ...prev, creatorName: docSnap.data().creatorName, message: "Fetched creator name for feedback." }));
       } else {
-        setDebugInfo(prev => ({ ...prev, message: "Error: This Johari Window does not exist or you don't have access to it." }));
+        setAppError("Error: This Johari Window does not exist or you don't have access to it.");
         setAppState('error');
       }
     };
 
     fetchCreatorName();
-  }, [db, windowId, appState, appId]);
+  }, [db, windowId, appState]);
 
 
   // Determine which component to render
@@ -458,7 +439,7 @@ export default function App() {
             {appError}
           </p>
           <p className={tailwindClasses.subheading}>
-            Please check the debug log for more details.
+            Please ensure you have set the `REACT_APP_FIREBASE_CONFIG` environment variable.
           </p>
         </>
       );
@@ -597,12 +578,6 @@ export default function App() {
       <div className={tailwindClasses.container}>
         <div className={tailwindClasses.card}>
           {renderContent()}
-        </div>
-        <div className={tailwindClasses.debugPanel}>
-          <h3 className={tailwindClasses.debugTitle}>Debug Log</h3>
-          <pre className={tailwindClasses.debugLog}>
-            {JSON.stringify(debugInfo, null, 2)}
-          </pre>
         </div>
       </div>
     </FirebaseContext.Provider>
