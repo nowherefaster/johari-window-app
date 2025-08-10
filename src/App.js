@@ -6,24 +6,24 @@ import { getFirestore, doc, onSnapshot, collection, addDoc, updateDoc, getDoc, q
 // Define the Firebase context to pass services to components
 const FirebaseContext = createContext(null);
 
-// Tailwind CSS classes for a clean, responsive, and professional look
+// Tailwind CSS classes for a clean, professional look inspired by Slalom
 const tailwindClasses = {
-  container: "min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 overflow-x-hidden",
+  container: "min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 overflow-x-hidden font-inter",
   card: "bg-white p-8 rounded-lg shadow-xl max-w-2xl w-full text-center space-y-6",
   heading: "text-3xl font-bold text-gray-800",
   subheading: "text-lg text-gray-600",
-  buttonPrimary: "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed",
+  buttonPrimary: "bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed",
   buttonSecondary: "bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out",
-  input: "w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500",
+  input: "w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500",
   linkContainer: "flex items-center space-x-2",
   linkInput: "flex-grow p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-mono text-sm",
-  copyButton: "bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 whitespace-nowrap",
+  copyButton: "bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 whitespace-nowrap",
   copyButtonFeedback: "bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md whitespace-nowrap",
   snackbar: "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full text-white font-bold shadow-lg transition-transform duration-300 ease-in-out transform",
   snackbarError: "bg-red-500",
   adjectiveContainer: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-6",
   adjectiveButton: "py-2 px-4 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out",
-  adjectiveButtonSelected: "py-2 px-4 rounded-full border-2 border-indigo-600 bg-indigo-50 text-indigo-700 font-bold",
+  adjectiveButtonSelected: "py-2 px-4 rounded-full border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold",
   adjectiveButtonInactive: "py-2 px-4 rounded-full border-2 border-gray-200 text-gray-400 bg-gray-100",
   adjectiveList: "mt-4 text-left p-4 bg-gray-50 rounded-lg",
   adjectiveListItem: "my-1",
@@ -343,7 +343,25 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
   const selfSelections = windowData?.selfSelections || [];
   const allFeedback = windowData?.feedback || [];
   const feedbackSelections = new Set();
-  allFeedback.forEach(feedbackDoc => feedbackDoc.selections.forEach(adj => feedbackSelections.add(adj)));
+  
+  // Combine all selections (creator's and all teammates') into a single list
+  const allSelections = [...selfSelections];
+  allFeedback.forEach(feedbackDoc => {
+      allSelections.push(...feedbackDoc.selections);
+  });
+
+  // Calculate the master count for each adjective
+  const masterCounts = {};
+  allSelections.forEach(adj => {
+      masterCounts[adj] = (masterCounts[adj] || 0) + 1;
+  });
+
+  // Re-calculate the quadrants based on this combined view
+  allFeedback.forEach(feedbackDoc => {
+      feedbackDoc.selections.forEach(adj => {
+          feedbackSelections.add(adj);
+      });
+  });
 
   const arena = adjectives.filter(adj => selfSelections.includes(adj) && feedbackSelections.has(adj));
   const blindSpot = adjectives.filter(adj => !selfSelections.includes(adj) && feedbackSelections.has(adj));
@@ -351,6 +369,27 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
   const unknown = adjectives.filter(adj => !selfSelections.includes(adj) && !feedbackSelections.has(adj));
 
   const responsesCount = allFeedback.length;
+
+  // Helper function to render list items with optional count
+  const renderAdjectiveList = (adjectiveArray) => {
+      return adjectiveArray.length > 0 ? (
+          adjectiveArray.map(adj => {
+              const count = masterCounts[adj] || 0;
+              return (
+                  <li key={adj} className={`${tailwindClasses.adjectiveListItem} flex justify-between items-center`}>
+                      <span>{adj}</span>
+                      {count > 1 && (
+                          <span className="text-sm font-semibold text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">
+                              {count}
+                          </span>
+                      )}
+                  </li>
+              );
+          })
+      ) : (
+          <p>No adjectives in this quadrant yet.</p>
+      );
+  };
 
   return (
     <>
@@ -379,41 +418,25 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
         <div className={tailwindClasses.quadrant}>
           <h3 className={tailwindClasses.quadrantTitle}>Arena (Open)</h3>
           <ul className={tailwindClasses.adjectiveList}>
-            {arena.length > 0 ? (
-              arena.map(adj => <li key={adj} className={tailwindClasses.adjectiveListItem}>{adj}</li>)
-            ) : (
-              <p>No adjectives in this quadrant yet.</p>
-            )}
+            {renderAdjectiveList(arena)}
           </ul>
         </div>
         <div className={tailwindClasses.quadrant}>
           <h3 className={tailwindClasses.quadrantTitle}>Blind Spot</h3>
           <ul className={tailwindClasses.adjectiveList}>
-            {blindSpot.length > 0 ? (
-              blindSpot.map(adj => <li key={adj} className={tailwindClasses.adjectiveListItem}>{adj}</li>)
-            ) : (
-              <p>No adjectives in this quadrant yet.</p>
-            )}
+            {renderAdjectiveList(blindSpot)}
           </ul>
         </div>
         <div className={tailwindClasses.quadrant}>
           <h3 className={tailwindClasses.quadrantTitle}>Facade (Hidden)</h3>
           <ul className={tailwindClasses.adjectiveList}>
-            {facade.length > 0 ? (
-              facade.map(adj => <li key={adj} className={tailwindClasses.adjectiveListItem}>{adj}</li>)
-            ) : (
-              <p>No adjectives in this quadrant yet.</p>
-            )}
+            {renderAdjectiveList(facade)}
           </ul>
         </div>
         <div className={tailwindClasses.quadrant}>
           <h3 className={tailwindClasses.quadrantTitle}>Unknown</h3>
           <ul className={tailwindClasses.adjectiveList}>
-            {unknown.length > 0 ? (
-              unknown.map(adj => <li key={adj} className={tailwindClasses.adjectiveListItem}>{adj}</li>)
-            ) : (
-              <p>No adjectives in this quadrant yet.</p>
-            )}
+            {renderAdjectiveList(unknown)}
           </ul>
         </div>
       </div>
