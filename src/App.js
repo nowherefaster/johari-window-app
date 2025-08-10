@@ -188,6 +188,7 @@ export default function App() {
             updateDebug('doc_exists', 'Firestore document exists. Fetching data...');
             const data = docSnap.data();
             const userSelections = data.selfAssessment || [];
+            updateDebug('self_assessment_length', `Self-assessment adjectives: ${userSelections.length}`);
 
             if (userSelections.length > 0) {
               setHasSubmittedSelfAssessment(true);
@@ -305,7 +306,10 @@ export default function App() {
         await updateDoc(userDocRef, {
           selfAssessment: selectedAdjectives,
         });
-        updateDebug('assessment_saved', 'Self-assessment saved.');
+        updateDebug('assessment_saved', `Self-assessment saved with ${selectedAdjectives.length} adjectives.`);
+        // Note: We no longer manually set the page to 'results' here.
+        // The onSnapshot listener in the useEffect hook will detect the
+        // database change and automatically update the page state.
       } else {
         const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
         await addDoc(feedbackCollectionRef, {
@@ -314,8 +318,8 @@ export default function App() {
           submittedAt: new Date(),
         });
         updateDebug('assessment_saved', 'Feedback submitted.');
+        setPage('results'); // Peer feedback submitters can go to a results page
       }
-      setPage('results');
     } catch (e) {
       console.error("Error saving assessment:", e);
       setError("Failed to save your selections. Please try again.");
