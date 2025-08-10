@@ -340,18 +340,24 @@ export default function App() {
 
   // Firebase Initialization and Auth
   useEffect(() => {
-    const initializeFirebase = async () => {
+    const initializeFirebase = async (retryCount = 0) => {
+      // Check for global variables. If they aren't here after a few retries, it's a critical error.
+      if (typeof __app_id === 'undefined' || typeof __firebase_config === 'undefined') {
+        if (retryCount < 5) {
+          // Wait and retry, as the environment variables might be loaded asynchronously.
+          setTimeout(() => initializeFirebase(retryCount + 1), 500 * (2 ** retryCount));
+        } else {
+          setAppError("The application ID or Firebase configuration is missing. This is a critical error and the app cannot function.");
+        }
+        return;
+      }
+      
       try {
-        const currentAppId = typeof __app_id !== 'undefined' ? __app_id : null;
+        const currentAppId = __app_id;
         setAppId(currentAppId);
         
+        const firebaseConfigString = __firebase_config;
         let firebaseConfig = {};
-        const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
-
-        if (!currentAppId) {
-          setAppError("The application ID is missing. Cannot initialize Firebase.");
-          return;
-        }
 
         if (firebaseConfigString) {
           try {
