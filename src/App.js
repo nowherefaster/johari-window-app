@@ -25,7 +25,7 @@ const tailwindClasses = {
   adjectiveContainer: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-6",
   adjectiveButton: "py-2 px-4 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out",
   adjectiveButtonSelected: "py-2 px-4 rounded-full border-2 border-indigo-600 bg-indigo-50 text-indigo-700 font-bold",
-  adjectiveList: "mt-4 text-left p-4 bg-gray-50 rounded-lg", // Removed scrolling
+  adjectiveList: "mt-4 text-left p-4 bg-gray-50 rounded-lg",
   adjectiveListItem: "my-1",
   quadrantContainer: "grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-left",
   quadrant: "bg-gray-50 p-4 rounded-lg",
@@ -75,7 +75,7 @@ const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) =
       <button
         className={tailwindClasses.buttonPrimary}
         onClick={handleStart}
-        disabled={!isAppReady}
+        disabled={!isAppReady || creatorName.trim() === ''}
       >
         Start
       </button>
@@ -159,6 +159,7 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
             key={adj}
             className={selectedAdjectives.includes(adj) ? tailwindClasses.adjectiveButtonSelected : tailwindClasses.adjectiveButton}
             onClick={() => toggleAdjective(adj)}
+            disabled={!selectedAdjectives.includes(adj) && selectedAdjectives.length >= MAX_SELECTIONS}
           >
             {adj}
           </button>
@@ -238,6 +239,7 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
             key={adj}
             className={selectedAdjectives.includes(adj) ? tailwindClasses.adjectiveButtonSelected : tailwindClasses.adjectiveButton}
             onClick={() => toggleAdjective(adj)}
+            disabled={!selectedAdjectives.includes(adj) && selectedAdjectives.length >= MAX_SELECTIONS}
           >
             {adj}
           </button>
@@ -367,7 +369,7 @@ const WindowDisplay = ({ creatorLink, windowData, setAppState, setWindowId, isAp
 
 // Main App component
 export default function App() {
-  const [appState, setAppState] = useState('home'); // Initial state is now the home page
+  const [appState, setAppState] = useState('home');
   const [windowId, setWindowId] = useState(null);
   const [creatorName, setCreatorName] = useState('');
   const [windowData, setWindowData] = useState(null);
@@ -379,36 +381,30 @@ export default function App() {
   const [appId, setAppId] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
 
-  // Function to create a new window from anywhere in the app
   const handleCreateNewWindow = () => {
     setWindowId(null);
     setAppState('home');
-    setWindowData(null); // Clear previous window data
+    setWindowData(null);
   };
 
-  // Function to edit selections, only available to creator
   const handleEditSelections = () => {
     setAppState('creatorAdjectiveSelection');
-    // We don't clear the windowId, so the update will be applied to the same document
   };
 
-
-  // Parse URL for existing windowId
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const id = urlParams.get('windowId');
     if (id) {
       setWindowId(id);
-      setAppState('feedback');
+      // We don't set a state here, as the onSnapshot will handle the update
     }
   }, []);
 
-  // Firebase Initialization and Auth
   useEffect(() => {
     const initializeFirebase = async () => {
       try {
-        const firebaseConfigString = process.env.REACT_APP_FIREBASE_CONFIG;
-        const appIdString = process.env.__app_id;
+        const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : process.env.REACT_APP_FIREBASE_CONFIG;
+        const appIdString = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         let firebaseConfig = {};
 
         if (!firebaseConfigString) {
@@ -431,11 +427,7 @@ export default function App() {
           return;
         }
 
-        if (appIdString) {
-          setAppId(appIdString);
-        } else {
-          setAppId('default-app-id');
-        }
+        setAppId(appIdString);
 
         const app = initializeApp(firebaseConfig);
         const firestore = getFirestore(app);
@@ -443,17 +435,22 @@ export default function App() {
         setDb(firestore);
         setAuth(authService);
 
-        await signInAnonymously(authService);
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        if (initialAuthToken) {
+          await signInWithCustomToken(authService, initialAuthToken);
+        } else {
+          await signInAnonymously(authService);
+        }
 
         onAuthStateChanged(authService, (user) => {
           if (user) {
             setUserId(user.uid);
             setIsAppReady(true);
-            setDebugInfo(prev => ({...prev, userId: user.uid, appId: appIdString || 'default-app-id', message: "User signed in. App ready."}));
+            setDebugInfo(prev => ({...prev, userId: user.uid, appId: appIdString, message: "User signed in. App ready."}));
           } else {
             setUserId(null);
             setIsAppReady(true);
-            setDebugInfo(prev => ({...prev, userId: null, appId: appIdString || 'default-app-id', message: "No user signed in. App ready."}));
+            setDebugInfo(prev => ({...prev, userId: null, appId: appIdString, message: "No user signed in. App ready."}));
           }
         });
       } catch (e) {
@@ -469,7 +466,6 @@ export default function App() {
     }
   }, [db]);
 
-  // Firestore Data Listener for creator's window
   useEffect(() => {
     if (!db || !windowId || !isAppReady || !appId) return;
 
@@ -480,9 +476,16 @@ export default function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setWindowData(data);
-        setCreatorName(data.creatorName); // Ensure creator name is updated on feedback page
+        setCreatorName(data.creatorName);
+        if (data.creatorId === userId) {
+          setAppState('windowCreated');
+        } else {
+          setAppState('feedback');
+        }
         setDebugInfo(prev => ({...prev, message: "Window data received and state updated.", windowData: data}));
       } else {
+        setAppError("Error: This Johari Window does not exist or you don't have access to it.");
+        setAppState('error');
         setDebugInfo(prev => ({...prev, message: "onSnapshot callback fired, but document does not exist."}));
       }
     });
@@ -491,27 +494,7 @@ export default function App() {
       setDebugInfo(prev => ({...prev, message: "onSnapshot listener for window unsubscribed."}));
       unsub();
     };
-  }, [db, windowId, isAppReady, appId]);
-
-  // Handle URL changes to update app state
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const id = urlParams.get('windowId');
-
-    if (id) {
-      if (appState !== 'feedback' && appState !== 'windowCreated') {
-        // If the app is not already in a window state, set it to feedback or windowCreated
-        // We can't know which one yet, so we will let the onSnapshot handle it
-        setWindowId(id);
-      }
-    } else if (appState !== 'home') {
-      // If no windowId in URL and not on home page, go to home
-      setAppState('home');
-      setWindowId(null);
-      setCreatorName('');
-      setWindowData(null);
-    }
-  }, [window.location.search, appState]);
+  }, [db, windowId, isAppReady, appId, userId]);
 
 
   const renderContent = () => {
@@ -521,9 +504,6 @@ export default function App() {
           <h1 className={tailwindClasses.heading}>Application Error</h1>
           <p className={`${tailwindClasses.subheading} text-red-500 font-semibold`}>
             {appError}
-          </p>
-          <p className={tailwindClasses.subheading}>
-            Please ensure you have set the `REACT_APP_FIREBASE_CONFIG` environment variable.
           </p>
         </>
       );
