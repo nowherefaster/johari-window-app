@@ -22,8 +22,8 @@ const tailwindClasses = {
   snackbar: "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full text-white font-bold shadow-lg transition-transform duration-300 ease-in-out transform",
   snackbarError: "bg-red-500",
   adjectiveContainer: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-6",
-  adjectiveButton: "py-2 px-4 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out",
-  adjectiveButtonSelected: "py-2 px-4 rounded-full border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold",
+  adjectiveButton: "py-2 px-4 rounded-full border-2 border-gray-300 text-gray-700 font-medium transition duration-200 ease-in-out text-sm md:text-base",
+  adjectiveButtonSelected: "py-2 px-4 rounded-full border-2 border-blue-600 bg-blue-50 text-blue-700 font-bold text-sm md:text-base",
   adjectiveButtonInactive: "py-2 px-4 rounded-full border-2 border-gray-200 text-gray-400 bg-gray-100",
   adjectiveList: "mt-4 text-left p-4 bg-gray-50 rounded-lg",
   adjectiveListItem: "my-1",
@@ -100,13 +100,24 @@ const HelpModal = ({ show, onClose }) => {
           </div>
           <div>
             <h3 className="text-xl font-semibold text-gray-800 mb-2">How to Use this Tool</h3>
+            <p>This tool is designed to be a simple, 3-step process for you and your team:</p>
             <ol className="list-decimal list-inside space-y-2">
               <li><strong>Step 1: Create your window.</strong> Begin by entering your name and selecting the five adjectives that you feel best describe you.</li>
-              <li><strong>Step 2: Share the link.</strong> Once you've created your window, a unique link will be generated. Share this link with your teammates.</li>
-              <li><strong>Step 3: Provide feedback.</strong> Teammates will use the link to select five adjectives that they feel best describe you.</li>
-              <li><strong>Step 4: View your results.</strong> As feedback is submitted, your Johari Window will be populated in real-time, helping you visualize the collective perceptions.</li>
-              <li><strong>Step 5: Discuss and grow.</strong> The most important step is to use these results as a starting point for open and honest conversations with your team.</li>
+              <li><strong>Step 2: Share the link.</strong> Once you've created your window, a unique link will be generated. Share this link with your teammates so they can provide their feedback.</li>
+              <li><strong>Step 3: View your results.</strong> As feedback is submitted, your Johari Window will be populated in real-time, helping you visualize the collective perceptions and start a conversation.</li>
             </ol>
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">Tips for a Productive Discussion</h3>
+            <p>
+              The Johari Window is most powerful when used as a starting point for open, honest, and constructive dialogue. Here are a few tips for your team discussion:
+            </p>
+            <ul className="list-disc list-inside space-y-2">
+              <li><strong>Focus on "Why":</strong> Instead of just looking at the adjectives, discuss the specific behaviors that led to certain perceptions. For example, if "dependable" is in your Blind Spot, ask your teammates for an example of when you demonstrated this quality.</li>
+              <li><strong>Practice Active Listening:</strong> Listen to your teammates' feedback without becoming defensive. Remember, this is a tool for self-discovery and growth, not a critique.</li>
+              <li><strong>Be Constructive, Not Critical:</strong> When giving feedback, focus on observable behaviors and use "I" statements. For example, say "I noticed you are very organized when you lead meetings," instead of "You are organized."</li>
+              <li><strong>Celebrate Strengths:</strong> Pay special attention to adjectives in the Arena (Open Self) and Blind Spot. These are your known and unknown strengths!</li>
+            </ul>
           </div>
         </div>
       </div>
