@@ -71,7 +71,8 @@ export default function App() {
   const [creatorName, setCreatorName] = useState('');
   const [teammateResponseCount, setTeammateResponseCount] = useState(0);
   const [isWindowDataLoaded, setIsWindowDataLoaded] = useState(false);
-
+  const [peerAdjectives, setPeerAdjectives] = useState(new Set());
+  
   const updateDebug = (key, value) => {
     setDebugInfo(prev => ({ ...prev, [key]: value }));
   };
@@ -192,7 +193,7 @@ export default function App() {
         
         // This is the self-assessment list from Firestore, which determines the creator's page state.
         const selfAssessmentFromDb = data.selfAssessment || [];
-
+        
         // For the creator, if a self-assessment exists, go to results. Otherwise, show the assess page.
         if (isSelfAssessment) {
           if (selfAssessmentFromDb.length > 0) {
@@ -200,9 +201,10 @@ export default function App() {
           } else {
             setPage('assess');
           }
-          // The selectedAdjectives state is used for the current session, not for determining the page.
-          setSelectedAdjectives(selfAssessmentFromDb);
         }
+        
+        // Always update the selectedAdjectives state from the DB for the current user's selections
+        setSelectedAdjectives(selfAssessmentFromDb);
 
         setIsWindowDataLoaded(true);
       } else {
@@ -220,14 +222,14 @@ export default function App() {
     return () => unsubscribeWindow();
   }, [db, userId, windowId, creatorId, isSelfAssessment]);
 
-  // PHASE 4: Set up feedback listener and determine page state (only after window data is loaded)
+  // PHASE 4: Set up feedback listener (always needed when window data is ready)
   useEffect(() => {
     if (!isWindowDataLoaded || !db || !userId || !windowId || !creatorId) {
         updateDebug('phase4_status_feedback', 'Waiting for window data to be loaded...');
         return;
     }
 
-    updateDebug('phase4_status_feedback', 'Window data is loaded. Setting up feedback listener and determining page state.');
+    updateDebug('phase4_status_feedback', 'Window data is loaded. Setting up feedback listener.');
 
     let appId;
     try {
@@ -242,7 +244,7 @@ export default function App() {
     let unsubscribeFeedback;
 
     if (isSelfAssessment) {
-      // Logic for the creator: listen to feedback and calculate results.
+      // Logic for the creator: listen to feedback and set peer adjectives state
       unsubscribeFeedback = onSnapshot(feedbackCollectionRef, (querySnap) => {
         updateDebug('onSnapshot_feedback_creator', 'Feedback snapshot fired for creator.');
         setTeammateResponseCount(querySnap.size);
@@ -250,18 +252,8 @@ export default function App() {
         querySnap.forEach(doc => {
           doc.data().adjectives.forEach(adj => peerSelections.add(adj));
         });
-        
-        // Calculate results based on the selfAssessment from the window doc
-        // and the peer feedback from this listener.
-        const selfAssessment = selectedAdjectives;
-        const arena = selfAssessment.filter(adj => peerSelections.has(adj));
-        const blindSpot = Array.from(peerSelections).filter(adj => !selfAssessment.includes(adj));
-        const facade = selfAssessment.filter(adj => !peerSelections.has(adj));
-        const unknown = adjectivesList.filter(adj => !selfAssessment.includes(adj) && !peerSelections.has(adj));
-        setResults({ arena, blindSpot, facade, unknown });
-        
-        // No need to set the page here, it's handled in the window listener
-        setLoading(false); 
+        setPeerAdjectives(peerSelections);
+        setLoading(false);
       }, (error) => {
           console.error("Error with creator feedback onSnapshot:", error);
           setError(`Error loading feedback: ${error.message}`);
@@ -294,6 +286,20 @@ export default function App() {
       }
     };
   }, [isWindowDataLoaded, db, userId, windowId, creatorId, isSelfAssessment]);
+
+  // PHASE 5: Calculate results whenever self-assessment or peer feedback changes
+  useEffect(() => {
+    if (isSelfAssessment && isWindowDataLoaded && selectedAdjectives && peerAdjectives) {
+      updateDebug('calculating_results', 'Calculating results based on updated data.');
+      
+      const selfAssessment = selectedAdjectives;
+      const arena = selfAssessment.filter(adj => peerAdjectives.has(adj));
+      const blindSpot = Array.from(peerAdjectives).filter(adj => !selfAssessment.includes(adj));
+      const facade = selfAssessment.filter(adj => !peerAdjectives.has(adj));
+      const unknown = adjectivesList.filter(adj => !selfAssessment.includes(adj) && !peerAdjectives.has(adj));
+      setResults({ arena, blindSpot, facade, unknown });
+    }
+  }, [isSelfAssessment, isWindowDataLoaded, selectedAdjectives, peerAdjectives]);
 
   const handleStartNewWindow = async () => {
     if (!db || !userId) {
