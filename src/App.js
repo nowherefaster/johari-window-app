@@ -1,7 +1,7 @@
 import React, { useState, useEffect, createContext } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, getDocs } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
 
 // Define the Firebase context to pass services to components
 const FirebaseContext = createContext(null);
@@ -85,7 +85,7 @@ export default function App() {
         let firebaseConfig;
         let rawConfig = "";
         try {
-          rawConfig = process.env.REACT_APP_FIREBASE_CONFIG || __firebase_config;
+          rawConfig = typeof __firebase_config !== 'undefined' ? __firebase_config : process.env.REACT_APP_FIREBASE_CONFIG;
           updateDebug('raw_firebase_config', rawConfig);
           firebaseConfig = JSON.parse(rawConfig);
         } catch (e) {
@@ -101,7 +101,7 @@ export default function App() {
         
         let initialAuthToken;
         try {
-          initialAuthToken = process.env.REACT_APP_INITIAL_AUTH_TOKEN || __initial_auth_token;
+          initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : process.env.REACT_APP_INITIAL_AUTH_TOKEN;
         } catch (e) {
           initialAuthToken = null;
           updateDebug('auth_token_error', 'Initial auth token is not available. Proceeding without it.');
@@ -134,7 +134,7 @@ export default function App() {
     initFirebase();
   }, []);
 
-  // PHASE 2: Handle URL parameters and set up listeners after auth is ready
+  // PHASE 2: Handle URL parameters and set up window listener after auth is ready
   useEffect(() => {
     if (!db || !userId) {
       updateDebug('phase2_status', 'Waiting for DB and userId to be available...');
@@ -152,31 +152,28 @@ export default function App() {
       updateDebug('url_params', `Found windowId: ${id}, creatorId: ${creatorIdFromUrl}`);
       setWindowId(id);
       setCreatorId(creatorIdFromUrl);
-      
+      setIsSelfAssessment(userId === creatorIdFromUrl);
+
       let appId;
       try {
-        appId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        appId = typeof __app_id !== 'undefined' ? __app_id : process.env.REACT_APP_APP_ID || 'default-app-id';
       } catch(e) {
         appId = 'default-app-id';
         updateDebug('app_id_error', 'App ID is not available. Using default.');
       }
       
-      const isCreator = userId === creatorIdFromUrl;
-      setIsSelfAssessment(isCreator);
-
       const windowRef = doc(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows`, id);
-      const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorIdFromUrl}/windows/${id}/feedback`);
 
-      // Set up the main window listener for both creator and teammate to get the name and self-assessment data.
-      const unsubscribeWindow = onSnapshot(windowRef, async (docSnap) => {
+      const unsubscribeWindow = onSnapshot(windowRef, (docSnap) => {
         updateDebug('onSnapshot_window', 'onSnapshot callback fired for window.');
         if (docSnap.exists()) {
           const data = docSnap.data();
           setCreatorName(data.creatorName || 'Your Teammate');
           const userSelections = data.selfAssessment || [];
 
-          if (isCreator) {
-            // Logic for the creator
+          // The main effect's responsibility is to get the basic window data and set initial state.
+          // It's the feedback effect's job to handle the feedback data.
+          if (userId === creatorIdFromUrl) {
             if (userSelections.length > 0) {
               setHasSubmittedSelfAssessment(true);
               setPage('results');
@@ -185,29 +182,11 @@ export default function App() {
               setPage('assess');
             }
           } else {
-            // Logic for the teammate
-            try {
-              const querySnapshot = await getDocs(feedbackCollectionRef);
-              let existingFeedback = null;
-              querySnapshot.forEach(docSnap => {
-                if (docSnap.data().submittedBy === userId) {
-                  existingFeedback = docSnap.data();
-                }
-              });
-              if (existingFeedback) {
-                setSelectedAdjectives(existingFeedback.adjectives);
-                setPage('submitted');
-              } else {
-                setPage('assess');
-              }
-            } catch (e) {
-              console.error("Error fetching feedback:", e);
-              setError("Failed to fetch existing feedback. " + e.message);
-              updateDebug('fetch_feedback_error', e.message);
-            }
+            // A teammate will go to the 'assess' page by default.
+            // The feedback useEffect will check if they've already submitted.
+            setPage('assess');
           }
           
-          // Regardless of creator/teammate, loading is now complete
           setLoading(false);
         } else {
           // Document does not exist
@@ -217,48 +196,92 @@ export default function App() {
           setLoading(false);
         }
       }, (error) => {
-        // Error handling for onSnapshot
         console.error("Error with window onSnapshot:", error);
         setError(`Error: ${error.message}`);
         setLoading(false);
       });
 
-      // Set up a separate feedback listener ONLY for the creator
-      let unsubscribeFeedback;
-      if (isCreator) {
-        unsubscribeFeedback = onSnapshot(feedbackCollectionRef, (querySnap) => {
-          updateDebug('onSnapshot_feedback', 'Feedback onSnapshot callback fired.');
-          setTeammateResponseCount(querySnap.size);
-          const peerSelections = new Set();
-          querySnap.forEach(doc => {
-            doc.data().adjectives.forEach(adj => peerSelections.add(adj));
-          });
-          const userSelections = results?.facade || []; // Use existing results or an empty array
-          const arena = userSelections.filter(adj => peerSelections.has(adj));
-          const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
-          const facade = userSelections.filter(adj => !peerSelections.has(adj));
-          const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
-          setResults({ arena, blindSpot, facade, unknown });
-        }, (error) => {
-            console.error("Error with feedback onSnapshot:", error);
-        });
-      }
-      
       const newShareLink = `${window.location.origin}${window.location.pathname}?id=${id}&mode=feedback&creatorId=${creatorIdFromUrl}`;
       setShareLink(newShareLink);
       updateDebug('share_link_set', newShareLink);
       
       return () => {
         unsubscribeWindow();
-        if (unsubscribeFeedback) {
-          unsubscribeFeedback();
-        }
       };
     } else {
       updateDebug('url_params', 'No windowId or creatorId found in URL. Displaying start page.');
       setLoading(false);
     }
   }, [db, userId, windowId, creatorId]);
+
+  // PHASE 3: Handle feedback listeners for both creator and teammate
+  useEffect(() => {
+    if (!db || !userId || !windowId || !creatorId) {
+      updateDebug('phase3_status', 'Waiting for DB, userId, windowId, creatorId to be available for feedback listener...');
+      return;
+    }
+    
+    updateDebug('phase3_status', 'Setting up feedback listener...');
+    
+    let appId;
+      try {
+        appId = typeof __app_id !== 'undefined' ? __app_id : process.env.REACT_APP_APP_ID || 'default-app-id';
+      } catch(e) {
+        appId = 'default-app-id';
+        updateDebug('app_id_error', 'App ID is not available. Using default.');
+      }
+      
+    const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
+
+    let unsubscribeFeedback;
+    
+    if (isSelfAssessment) {
+      // Logic for the creator
+      unsubscribeFeedback = onSnapshot(feedbackCollectionRef, (querySnap) => {
+        updateDebug('onSnapshot_feedback_creator', 'Feedback onSnapshot callback fired.');
+        setTeammateResponseCount(querySnap.size);
+        const peerSelections = new Set();
+        querySnap.forEach(doc => {
+          doc.data().adjectives.forEach(adj => peerSelections.add(adj));
+        });
+        const selfAssessmentDocRef = doc(db, `/artifacts/${appId}/users/${creatorId}/windows`, windowId);
+        onSnapshot(selfAssessmentDocRef, (selfDocSnap) => {
+          if (selfDocSnap.exists()) {
+            const userSelections = selfDocSnap.data().selfAssessment || [];
+            const arena = userSelections.filter(adj => peerSelections.has(adj));
+            const blindSpot = Array.from(peerSelections).filter(adj => !userSelections.includes(adj));
+            const facade = userSelections.filter(adj => !peerSelections.has(adj));
+            const unknown = adjectivesList.filter(adj => !userSelections.includes(adj) && !peerSelections.has(adj));
+            setResults({ arena, blindSpot, facade, unknown });
+          }
+        });
+      }, (error) => {
+          console.error("Error with creator feedback onSnapshot:", error);
+      });
+    } else {
+      // Logic for the teammate
+      const q = query(feedbackCollectionRef, where('submittedBy', '==', userId));
+      unsubscribeFeedback = onSnapshot(q, (querySnap) => {
+        updateDebug('onSnapshot_feedback_teammate', 'Teammate feedback onSnapshot callback fired.');
+        if (!querySnap.empty) {
+          const docSnap = querySnap.docs[0];
+          setSelectedAdjectives(docSnap.data().adjectives);
+          setPage('submitted');
+        } else {
+          // If no feedback document is found, a new teammate is assessing.
+          setPage('assess');
+        }
+      }, (error) => {
+        console.error("Error with teammate feedback onSnapshot:", error);
+      });
+    }
+    
+    return () => {
+      if (unsubscribeFeedback) {
+        unsubscribeFeedback();
+      }
+    };
+  }, [db, userId, windowId, creatorId, isSelfAssessment]);
 
   const handleStartNewWindow = async () => {
     if (!db || !userId) {
@@ -271,7 +294,7 @@ export default function App() {
       const newWindowId = generateUniqueId();
       let appId;
       try {
-        appId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        appId = typeof __app_id !== 'undefined' ? __app_id : process.env.REACT_APP_APP_ID || 'default-app-id';
       } catch(e) {
         appId = 'default-app-id';
         updateDebug('app_id_error', 'App ID is not available. Using default.');
@@ -287,7 +310,6 @@ export default function App() {
       updateDebug('new_window_created', `Successfully created new window with ID: ${newWindowId}`);
       updateDebug('new_window_path', `/artifacts/${appId}/users/${userId}/windows/${newWindowId}`);
       
-      // Update state directly to trigger the useEffect hook
       setWindowId(newWindowId);
       setCreatorId(userId);
       setIsSelfAssessment(true);
@@ -299,9 +321,6 @@ export default function App() {
       console.error("Error starting new window:", e);
       setError("Failed to start a new window. Please try again. The error was: " + e.message);
       updateDebug('start_new_error', `Failed to create new window: ${e.message}`);
-    } finally {
-      // The useEffect hook will now handle setting loading to false.
-      // setLoading(false); // Removed to avoid race conditions.
     }
   };
 
@@ -329,7 +348,7 @@ export default function App() {
     try {
       let appId;
       try {
-        appId = typeof process.env.REACT_APP_APP_ID !== 'undefined' ? process.env.REACT_APP_APP_ID : typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        appId = typeof __app_id !== 'undefined' ? __app_id : process.env.REACT_APP_APP_ID || 'default-app-id';
       } catch(e) {
         appId = 'default-app-id';
         updateDebug('app_id_error', 'App ID is not available. Using default.');
@@ -340,15 +359,15 @@ export default function App() {
           selfAssessment: selectedAdjectives,
         });
         updateDebug('assessment_saved', `Self-assessment saved with ${selectedAdjectives.length} adjectives.`);
+        // Note: The feedback listener will automatically update the results page.
       } else {
         const feedbackCollectionRef = collection(db, `/artifacts/${appId}/users/${creatorId}/windows/${windowId}/feedback`);
         
-        const querySnapshot = await getDocs(feedbackCollectionRef);
+        const q = query(feedbackCollectionRef, where('submittedBy', '==', userId));
+        const querySnapshot = await getDocs(q);
         let existingFeedbackDocId = null;
         querySnapshot.forEach(docSnap => {
-          if (docSnap.data().submittedBy === userId) {
             existingFeedbackDocId = docSnap.id;
-          }
         });
         
         if (existingFeedbackDocId) {
