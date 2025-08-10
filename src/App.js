@@ -83,49 +83,70 @@ const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) =
   );
 };
 
-// Component for the second step: adjective selection
-const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, userId, setDebugInfo }) => {
-  const [selectedAdjectives, setSelectedAdjectives] = useState([]);
+// Component for the second step: adjective selection (now also handles editing)
+const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, userId, setDebugInfo, windowData, windowId }) => {
+  const [selectedAdjectives, setSelectedAdjectives] = useState(windowData?.selfSelections || []);
   const [submissionStatus, setSubmissionStatus] = useState(null);
 
   const firebaseContext = React.useContext(FirebaseContext);
   const db = firebaseContext.db;
+  const MAX_SELECTIONS = 5;
 
-  const handleCreateNewWindow = async () => {
+  const handleSaveSelections = async () => {
     if (selectedAdjectives.length === 0) {
       setSubmissionStatus({ type: 'error', message: "Please select at least one adjective." });
       return;
     }
 
     try {
-      // FIX: Use the correct collection path that matches the Firestore security rules.
-      const windowsCollection = collection(db, `artifacts/${appId}/public/data/windows`);
-      const docRef = await addDoc(windowsCollection, {
-        creatorName: creatorName,
-        selfSelections: selectedAdjectives,
-        feedback: {},
-        creatorId: userId, // Store the creator's user ID
-        createdAt: new Date()
-      });
-      setWindowId(docRef.id);
-      setAppState('windowCreated');
-      setDebugInfo(prev => ({...prev, message: "Successfully created window in Firestore.", docId: docRef.id}));
+      if (windowId) {
+        // Update existing document
+        const docRef = doc(db, `artifacts/${appId}/public/data/windows`, windowId);
+        await updateDoc(docRef, { selfSelections: selectedAdjectives });
+        setAppState('windowCreated');
+        setDebugInfo(prev => ({...prev, message: "Successfully updated window in Firestore.", docId: windowId}));
+      } else {
+        // Create new document
+        const windowsCollection = collection(db, `artifacts/${appId}/public/data/windows`);
+        const docRef = await addDoc(windowsCollection, {
+          creatorName: creatorName,
+          selfSelections: selectedAdjectives,
+          feedback: {},
+          creatorId: userId,
+          createdAt: new Date()
+        });
+        setWindowId(docRef.id);
+        setAppState('windowCreated');
+        setDebugInfo(prev => ({...prev, message: "Successfully created window in Firestore.", docId: docRef.id}));
+      }
     } catch (e) {
-      console.error("Error creating document: ", e);
-      setSubmissionStatus({ type: 'error', message: "Failed to create a new window. Please try again." });
-      setDebugInfo(prev => ({...prev, error: e.message, message: "Firestore write failed in handleCreateNewWindow."}));
+      console.error("Error saving document: ", e);
+      setSubmissionStatus({ type: 'error', message: "Failed to save selections. Please try again." });
+      setDebugInfo(prev => ({...prev, error: e.message, message: "Firestore write failed in handleSaveSelections."}));
     }
   };
 
   const toggleAdjective = (adj) => {
-    setSelectedAdjectives(prev =>
-      prev.includes(adj) ? prev.filter(a => a !== adj) : [...prev, adj]
-    );
+    setSelectedAdjectives(prev => {
+      const isSelected = prev.includes(adj);
+      if (isSelected) {
+        setSubmissionStatus(null);
+        return prev.filter(a => a !== adj);
+      } else {
+        if (prev.length < MAX_SELECTIONS) {
+          setSubmissionStatus(null);
+          return [...prev, adj];
+        } else {
+          setSubmissionStatus({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+          return prev;
+        }
+      }
+    });
   };
 
   return (
     <>
-      <h1 className={tailwindClasses.heading}>Hello, {creatorName}!</h1>
+      <h1 className={tailwindClasses.heading}>{windowId ? 'Edit Your Selections' : `Hello, ${creatorName}!`}</h1>
       <p className={tailwindClasses.subheading}>Now, select the adjectives you feel best describe you.</p>
       {submissionStatus && (
         <div className={`${tailwindClasses.feedbackContainer} ${submissionStatus.type === 'error' ? tailwindClasses.errorFeedback : tailwindClasses.successFeedback}`}>
@@ -145,10 +166,10 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
       </div>
       <button
         className={tailwindClasses.buttonPrimary}
-        onClick={handleCreateNewWindow}
+        onClick={handleSaveSelections}
         disabled={!isAppReady || selectedAdjectives.length === 0}
       >
-        Create My Window
+        {windowId ? 'Update My Window' : 'Create My Window'}
       </button>
     </>
   );
@@ -157,13 +178,28 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
 // Component for giving feedback
 const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appId, setDebugInfo }) => {
   const [selectedAdjectives, setSelectedAdjectives] = useState([]);
+  const [submissionStatus, setSubmissionStatus] = useState(null);
+
   const firebaseContext = React.useContext(FirebaseContext);
   const db = firebaseContext.db;
+  const MAX_SELECTIONS = 5;
 
   const toggleAdjective = (adj) => {
-    setSelectedAdjectives(prev =>
-      prev.includes(adj) ? prev.filter(a => a !== adj) : [...prev, adj]
-    );
+    setSelectedAdjectives(prev => {
+      const isSelected = prev.includes(adj);
+      if (isSelected) {
+        setSubmissionStatus(null);
+        return prev.filter(a => a !== adj);
+      } else {
+        if (prev.length < MAX_SELECTIONS) {
+          setSubmissionStatus(null);
+          return [...prev, adj];
+        } else {
+          setSubmissionStatus({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
+          return prev;
+        }
+      }
+    });
   };
 
   const handleSubmitFeedback = async () => {
@@ -191,6 +227,11 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
     <>
       <h1 className={tailwindClasses.heading}>Give Feedback to {creatorName}</h1>
       <p className={tailwindClasses.subheading}>Select the adjectives you feel best describe them.</p>
+      {submissionStatus && (
+        <div className={`${tailwindClasses.feedbackContainer} ${submissionStatus.type === 'error' ? tailwindClasses.errorFeedback : tailwindClasses.successFeedback}`}>
+          {submissionStatus.message}
+        </div>
+      )}
       <div className={tailwindClasses.adjectiveContainer}>
         {adjectives.map((adj) => (
           <button
@@ -430,7 +471,7 @@ export default function App() {
 
   // Firestore Data Listener for creator's window
   useEffect(() => {
-    if (!db || !windowId || !isAppReady || appState !== 'windowCreated' || !appId) return;
+    if (!db || !windowId || !isAppReady || !appId) return;
 
     setDebugInfo(prev => ({...prev, message: "onSnapshot listener for window started."}));
 
@@ -439,6 +480,7 @@ export default function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setWindowData(data);
+        setCreatorName(data.creatorName); // Ensure creator name is updated on feedback page
         setDebugInfo(prev => ({...prev, message: "Window data received and state updated.", windowData: data}));
       } else {
         setDebugInfo(prev => ({...prev, message: "onSnapshot callback fired, but document does not exist."}));
@@ -449,25 +491,27 @@ export default function App() {
       setDebugInfo(prev => ({...prev, message: "onSnapshot listener for window unsubscribed."}));
       unsub();
     };
-  }, [db, windowId, isAppReady, appState, appId]);
+  }, [db, windowId, isAppReady, appId]);
 
-  // Fetch creator's name for feedback page
+  // Handle URL changes to update app state
   useEffect(() => {
-    if (!db || !windowId || appState !== 'feedback' || !appId) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const id = urlParams.get('windowId');
 
-    const fetchCreatorName = async () => {
-      const docRef = doc(db, `artifacts/${appId}/public/data/windows`, windowId);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setCreatorName(docSnap.data().creatorName);
-      } else {
-        setAppError("Error: This Johari Window does not exist or you don't have access to it.");
-        setAppState('error');
+    if (id) {
+      if (appState !== 'feedback' && appState !== 'windowCreated') {
+        // If the app is not already in a window state, set it to feedback or windowCreated
+        // We can't know which one yet, so we will let the onSnapshot handle it
+        setWindowId(id);
       }
-    };
-
-    fetchCreatorName();
-  }, [db, windowId, appState, appId]);
+    } else if (appState !== 'home') {
+      // If no windowId in URL and not on home page, go to home
+      setAppState('home');
+      setWindowId(null);
+      setCreatorName('');
+      setWindowData(null);
+    }
+  }, [window.location.search, appState]);
 
 
   const renderContent = () => {
@@ -516,6 +560,8 @@ export default function App() {
             userId={userId}
             appId={appId}
             setDebugInfo={setDebugInfo}
+            windowData={windowData}
+            windowId={windowId}
           />
         );
       case 'feedback':
