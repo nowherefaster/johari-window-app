@@ -342,7 +342,7 @@ export default function App() {
   useEffect(() => {
     const initializeFirebase = async (retryCount = 0) => {
       // Check for global variables. If they aren't here after a few retries, it's a critical error.
-      if (typeof __app_id === 'undefined' || typeof __firebase_config === 'undefined') {
+      if (typeof __app_id === 'undefined' || typeof REACT_APP_FIREBASE_CONFIG === 'undefined') {
         if (retryCount < 5) {
           // Wait and retry, as the environment variables might be loaded asynchronously.
           setTimeout(() => initializeFirebase(retryCount + 1), 500 * (2 ** retryCount));
@@ -353,10 +353,10 @@ export default function App() {
       }
       
       try {
-        const currentAppId = __app_id;
+        const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         setAppId(currentAppId);
         
-        const firebaseConfigString = __firebase_config;
+        const firebaseConfigString = REACT_APP_FIREBASE_CONFIG;
         let firebaseConfig = {};
 
         if (firebaseConfigString) {
