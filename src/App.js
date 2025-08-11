@@ -573,6 +573,7 @@ export default function App() {
     setWindowId(null);
     setAppState('home');
     setWindowData(null);
+    setCreatorName(''); // New line added here to clear the name field
   };
 
   const handleEditSelections = () => {
