@@ -8,8 +8,8 @@ const FirebaseContext = createContext(null);
 
 // Tailwind CSS classes for a clean, professional look
 const tailwindClasses = {
-  container: "min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 overflow-x-hidden font-inter",
-  card: "bg-white p-8 rounded-lg shadow-xl max-w-3xl w-full text-center space-y-6",
+  container: "min-h-screen bg-gray-50 flex flex-col items-center p-4 overflow-x-hidden font-inter",
+  card: "bg-white p-8 rounded-lg shadow-xl max-w-3xl w-full text-center space-y-6 mt-16",
   heading: "text-3xl font-bold text-gray-800",
   subheading: "text-lg text-gray-600",
   buttonPrimary: "bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed",
@@ -32,9 +32,10 @@ const tailwindClasses = {
   quadrantContainer: "grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-left",
   quadrant: "bg-gray-50 p-4 rounded-lg",
   quadrantTitle: "text-lg font-bold mb-2",
-  debugPanel: "bg-gray-800 text-gray-200 p-4 rounded-lg mt-8 max-w-2xl w-full font-mono text-left text-xs",
+  debugPanel: "bg-gray-800 text-gray-200 p-4 rounded-lg mt-8 max-w-2xl w-full font-mono text-left text-xs mb-20",
   debugTitle: "text-lg font-bold mb-2 text-white",
   debugLog: "whitespace-pre-wrap break-all",
+  adminLinkContainer: "w-full text-center mt-auto pb-4", // New class for the link container
 };
 
 const adjectives = [
@@ -128,11 +129,11 @@ const HelpModal = ({ show, onClose }) => {
 };
 
 
-// Component for the welcome page with name input and a discreet admin login link
-const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady, setSnackbarMessage, signInWithGoogle, adminSignInError }) => {
+// Component for the welcome page with name input
+const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) => {
   const handleStart = () => {
     if (!creatorName) {
-      setSnackbarMessage({ type: 'error', message: "Please enter your name to begin." });
+      // setSnackbarMessage({ type: 'error', message: "Please enter your name to begin." });
       return;
     }
     setAppState('creatorAdjectiveSelection');
@@ -156,18 +157,6 @@ const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady, set
       >
         Start
       </button>
-      <div className="flex flex-col items-center mt-4 space-y-2">
-          {adminSignInError && (
-              <p className="text-red-500 font-semibold text-sm">{adminSignInError}</p>
-          )}
-          <button
-              className="text-gray-500 hover:text-blue-600 transition-colors duration-200 text-sm"
-              onClick={signInWithGoogle}
-              disabled={!isAppReady}
-          >
-              Admin Login
-          </button>
-      </div>
     </>
   );
 };
@@ -475,7 +464,7 @@ const WindowDisplay = ({ windowData, setAppState, setWindowId, handleCreateNewWi
         </div>
       )}
 
-      <p className="text-lg font-bold text-gray-800 mt-4">{responsesCount} Teammate Responses</p>
+      <p className="text-lg font-bold text-gray-800 mt-4">{responsesCount} Teammate Response{responsesCount !== 1 ? 's' : ''}</p>
 
       <div className={tailwindClasses.quadrantContainer}>
         <div className={tailwindClasses.quadrant}>
@@ -536,7 +525,7 @@ const AdminDashboard = ({ setAppState, setWindowId, allWindowsData, handleSignOu
       <h1 className={tailwindClasses.heading}>Admin Dashboard</h1>
       <p className={tailwindClasses.subheading}>Click a name to view their Johari Window.</p>
       {allWindowsData.length > 0 ? (
-        <div className="space-y-2 mt-6 max-h-96 overflow-y-auto">
+        <div className="space-y-2 mt-6 max-h-96 overflow-y-auto w-full">
           {allWindowsData.map(window => (
             <button
               key={window.id}
@@ -569,6 +558,7 @@ export default function App() {
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminUids, setAdminUids] = useState([]);
   const [isAppReady, setIsAppReady] = useState(false);
   const [appError, setAppError] = useState(null);
   const [adminSignInError, setAdminSignInError] = useState(null);
@@ -576,13 +566,9 @@ export default function App() {
   const [debugInfo, setDebugInfo] = useState({});
   const [snackbarMessage, setSnackbarMessage] = useState(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Hardcoded list of admin UIDs. Add your own Google UID here to get admin access.
-  const ADMIN_IDS = [
-    '2dE4h5g7F9k0L3m8o6p1a9b4c7d5f0e',
-    '3g7h1F9k0L3m8o6p1a9b4c7d5f0e2d',
-    '8m0L3m8o6p1a9b4c7d5f0e2dE4h5g7'
-  ];
 
   const handleCreateNewWindow = () => {
     setWindowId(null);
@@ -638,87 +624,110 @@ export default function App() {
     }
   }, []);
 
+  // Effect to initialize Firebase and auth listener
   useEffect(() => {
+    if (initialized) return;
+
     const initializeFirebase = async () => {
-      try {
-        const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : process.env.REACT_APP_FIREBASE_CONFIG;
-        const appIdString = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        let firebaseConfig = {};
-
-        if (!firebaseConfigString) {
-          setAppError("Firebase configuration is missing. Please set the REACT_APP_FIREBASE_CONFIG environment variable.");
-          setDebugInfo(prev => ({...prev, error: "REACT_APP_FIREBASE_CONFIG is missing."}));
-          return;
-        }
-
         try {
-          firebaseConfig = JSON.parse(firebaseConfigString);
-        } catch (e) {
-          setAppError("Firebase configuration is malformed. Check the JSON syntax of REACT_APP_FIREBASE_CONFIG.");
-          setDebugInfo(prev => ({...prev, error: e.message, message: "Firebase init failed due to malformed JSON."}));
-          return;
-        }
+            const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+            const appIdString = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-        if (!firebaseConfig || !firebaseConfig.projectId) {
-          setAppError("Firebase configuration is invalid. The 'projectId' is missing.");
-          setDebugInfo(prev => ({...prev, error: "'projectId' not provided in firebase.initializeApp.", message: "Firebase init failed."}));
-          return;
-        }
+            if (!firebaseConfigString) {
+                setAppError("Firebase configuration is missing.");
+                setDebugInfo(prev => ({...prev, error: "Firebase config is missing."}));
+                return;
+            }
 
-        setAppId(appIdString);
+            const firebaseConfig = JSON.parse(firebaseConfigString);
+            if (!firebaseConfig || !firebaseConfig.projectId) {
+                setAppError("Firebase configuration is invalid.");
+                setDebugInfo(prev => ({...prev, error: "'projectId' not provided.", message: "Firebase init failed."}));
+                return;
+            }
 
-        const app = initializeApp(firebaseConfig);
-        const firestore = getFirestore(app);
-        const authService = getAuth(app);
-        setDb(firestore);
-        setAuth(authService);
-        
-        // Handle redirect result first
-        setDebugInfo(prev => ({...prev, message: "Checking for Google sign-in redirect result..."}));
-        getRedirectResult(authService).then((result) => {
-          if (result) {
-            setDebugInfo(prev => ({...prev, message: "Redirect result received.", user: result.user}));
-          } else {
-            setDebugInfo(prev => ({...prev, message: "No redirect result to process."}));
-          }
-        }).catch((error) => {
-          console.error("Error during redirect result:", error);
-          setAdminSignInError("Google sign in failed. Check the debug log for details.");
-          setDebugInfo(prev => ({...prev, message: "Error processing redirect result.", error: error.code, detail: error.message}));
-        });
-        
-        // Check for existing user, otherwise sign in anonymously
-        onAuthStateChanged(authService, (user) => {
-          if (user) {
-            setUserId(user.uid);
-            const isAdminUser = ADMIN_IDS.includes(user.uid);
-            setIsAdmin(isAdminUser);
-            setIsAppReady(true);
-            setDebugInfo(prev => ({...prev, userId: user.uid, isAdmin: isAdminUser, appId: appIdString, message: "User signed in. App ready.", userObject: user}));
-          } else {
-            // Sign in anonymously if no user is authenticated
-            signInAnonymously(authService).then(() => {
-              setIsAppReady(true);
-              setDebugInfo(prev => ({...prev, userId: null, isAdmin: false, appId: appIdString, message: "No user signed in. Signed in anonymously. App ready."}));
-            }).catch((e) => {
-              setAppError("Failed to sign in anonymously. Please check Firebase configuration.");
-              setDebugInfo(prev => ({...prev, error: e.message, message: "Anonymous sign-in failed."}));
-              setIsAppReady(false);
+            setAppId(appIdString);
+            const app = initializeApp(firebaseConfig);
+            const firestore = getFirestore(app);
+            const authService = getAuth(app);
+            setDb(firestore);
+            setAuth(authService);
+            setInitialized(true);
+            setDebugInfo(prev => ({...prev, message: "Firebase initialized."}));
+
+            // Handle redirect result first
+            getRedirectResult(authService).then((result) => {
+                if (result) {
+                    setDebugInfo(prev => ({...prev, message: "Redirect result received. User signed in.", user: result.user}));
+                    // The auth listener below will handle the rest
+                }
+            }).catch((error) => {
+                console.error("Error during redirect result:", error);
+                setAdminSignInError("Google sign in failed. Check the debug log for details.");
+                setDebugInfo(prev => ({...prev, message: "Error processing redirect result.", error: error.code, detail: error.message}));
             });
-          }
-        });
-      } catch (e) {
-        console.error("Firebase initialization failed:", e);
-        setAppError("Failed to initialize Firebase. Check your configuration.");
-        setDebugInfo(prev => ({...prev, error: e.message, message: "Firebase init failed."}));
-        setIsAppReady(false);
-      }
+
+            // Set up the main auth listener
+            const unsubscribe = onAuthStateChanged(authService, async (user) => {
+                if (user) {
+                    setUserId(user.uid);
+                    setIsAuthenticated(true);
+                    setDebugInfo(prev => ({...prev, userId: user.uid, message: "User signed in."}));
+                } else {
+                    try {
+                      const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                      if (token) {
+                          await signInWithCustomToken(authService, token);
+                          setDebugInfo(prev => ({...prev, message: "Signed in with custom token."}));
+                      } else {
+                          await signInAnonymously(authService);
+                          setDebugInfo(prev => ({...prev, message: "Signed in anonymously."}));
+                      }
+                    } catch (e) {
+                      setAppError("Failed to sign in. Check your Firebase configuration.");
+                      setDebugInfo(prev => ({...prev, error: e.message, message: "Initial sign-in failed."}));
+                    }
+                }
+            });
+
+            return () => unsubscribe();
+
+        } catch (e) {
+            console.error("Firebase initialization failed:", e);
+            setAppError("Failed to initialize Firebase. Check your configuration.");
+            setDebugInfo(prev => ({...prev, error: e.message, message: "Firebase init failed."}));
+            setIsAppReady(false);
+        }
     };
 
-    if (!db) {
-      initializeFirebase();
-    }
-  }, [db, ADMIN_IDS]);
+    initializeFirebase();
+}, [initialized]);
+
+// Effect to fetch admin UIDs and determine admin status
+useEffect(() => {
+  if (!db || !appId || !isAuthenticated) return;
+
+  const fetchAdminUids = async () => {
+      try {
+          const adminsRef = collection(db, `artifacts/${appId}/public/data/admins`);
+          const q = query(adminsRef);
+          const querySnapshot = await getDocs(q);
+          const uids = querySnapshot.docs.map(doc => doc.id);
+          setAdminUids(uids);
+          setIsAdmin(uids.includes(userId));
+          setIsAppReady(true);
+          setDebugInfo(prev => ({...prev, message: "Admin UIDs fetched.", adminUids: uids}));
+      } catch (e) {
+          console.error("Error fetching admin UIDs:", e);
+          setDebugInfo(prev => ({...prev, error: e.message, message: "Failed to fetch admin UIDs. App will function in non-admin mode."}));
+          setIsAdmin(false);
+          setIsAppReady(true);
+      }
+  };
+
+  fetchAdminUids();
+}, [db, appId, isAuthenticated, userId]);
+
 
   useEffect(() => {
     if (!db || !windowId || !isAppReady || !appId) return;
@@ -799,23 +808,23 @@ export default function App() {
   const renderContent = () => {
     if (appError) {
       return (
-        <>
+        <div className={tailwindClasses.card}>
           <h1 className={tailwindClasses.heading}>Application Error</h1>
           <p className={`${tailwindClasses.subheading} text-red-500 font-semibold`}>
             {appError}
           </p>
-        </>
+        </div>
       );
     }
 
     if (!isAppReady) {
       return (
-        <>
+        <div className={tailwindClasses.card}>
           <h1 className={tailwindClasses.heading}>Loading...</h1>
           <p className={tailwindClasses.subheading}>
             Initializing application. Please wait.
           </p>
-        </>
+        </div>
       );
     }
 
@@ -825,94 +834,105 @@ export default function App() {
 
     if (isAdmin && appState !== 'adminDashboard' && appState !== 'adminViewWindow') {
       return (
-        <p className={tailwindClasses.subheading}>
-          Signed in as admin. Redirecting to dashboard...
-        </p>
+        <div className={tailwindClasses.card}>
+          <p className={tailwindClasses.subheading}>
+            Signed in as admin. Redirecting to dashboard...
+          </p>
+        </div>
       );
     }
 
     if (isAdmin && appState === 'adminDashboard') {
       return (
-        <AdminDashboard
-          setAppState={setAppState}
-          setWindowId={setWindowId}
-          allWindowsData={allWindowsData}
-          handleSignOut={handleSignOut}
-        />
+        <div className={tailwindClasses.card}>
+          <AdminDashboard
+            setAppState={setAppState}
+            setWindowId={setWindowId}
+            allWindowsData={allWindowsData}
+            handleSignOut={handleSignOut}
+          />
+        </div>
       );
     }
 
     if (isAdmin && appState === 'adminViewWindow') {
       return windowData ? (
-        <WindowDisplay
-          windowData={windowData}
-          setAppState={setAppState}
-          setWindowId={setWindowId}
-          isAppReady={isAppReady}
-          handleCreateNewWindow={handleCreateNewWindow}
-          userId={userId}
-          handleEditSelections={handleEditSelections}
-          isAdmin={true}
-        />
+        <div className={tailwindClasses.card}>
+          <WindowDisplay
+            windowData={windowData}
+            setAppState={setAppState}
+            setWindowId={setWindowId}
+            isAppReady={isAppReady}
+            handleCreateNewWindow={handleCreateNewWindow}
+            userId={userId}
+            handleEditSelections={handleEditSelections}
+            isAdmin={true}
+          />
+        </div>
       ) : (
-        <p className={tailwindClasses.subheading}>Loading window data...</p>
+        <div className={tailwindClasses.card}>
+          <p className={tailwindClasses.subheading}>Loading window data...</p>
+        </div>
       );
     }
 
     switch (appState) {
       case 'home':
         return (
-          <WelcomePage
-            setAppState={setAppState}
-            creatorName={creatorName}
-            setCreatorName={setCreatorName}
-            isAppReady={isAppReady}
-            setSnackbarMessage={setSnackbarMessage}
-            signInWithGoogle={signInWithGoogle}
-            adminSignInError={adminSignInError}
-          />
+          <div className={tailwindClasses.card}>
+            <WelcomePage
+              setAppState={setAppState}
+              creatorName={creatorName}
+              setCreatorName={setCreatorName}
+              isAppReady={isAppReady}
+            />
+          </div>
         );
       case 'creatorAdjectiveSelection':
         return (
-          <Creator
-            setAppState={setAppState}
-            setWindowId={setWindowId}
-            creatorName={creatorName}
-            isAppReady={isAppReady}
-            userId={userId}
-            appId={appId}
-            setDebugInfo={setDebugInfo}
-            windowData={windowData}
-            windowId={windowId}
-            setSnackbarMessage={setSnackbarMessage}
-          />
+          <div className={tailwindClasses.card}>
+            <Creator
+              setAppState={setAppState}
+              setWindowId={setWindowId}
+              creatorName={creatorName}
+              isAppReady={isAppReady}
+              userId={userId}
+              appId={appId}
+              setDebugInfo={setDebugInfo}
+              windowData={windowData}
+              windowId={windowId}
+              setSnackbarMessage={setSnackbarMessage}
+            />
+          </div>
         );
       case 'feedback':
         return (
-          <FeedbackProvider
-            windowId={windowId}
-            creatorName={creatorName}
-            setAppState={setAppState}
-            isAppReady={isAppReady}
-            appId={appId}
-            userId={userId}
-            setDebugInfo={setDebugInfo}
-            setSnackbarMessage={setSnackbarMessage}
-          />
+          <div className={tailwindClasses.card}>
+            <FeedbackProvider
+              windowId={windowId}
+              creatorName={creatorName}
+              setAppState={setAppState}
+              isAppReady={isAppReady}
+              appId={appId}
+              userId={userId}
+              setDebugInfo={setDebugInfo}
+              setSnackbarMessage={setSnackbarMessage}
+            />
+          </div>
         );
       case 'error':
         return (
-          <>
+          <div className={tailwindClasses.card}>
             <h1 className={tailwindClasses.heading}>Error</h1>
             <p className={tailwindClasses.subheading}>
               The link you're using is invalid. Please check the URL or ask the creator to send you a new link.
             </p>
-          </>
+          </div>
         );
       case 'windowCreated':
         const creatorLink = `${window.location.origin}${window.location.pathname}?windowId=${windowId}`;
         return (
-          <>
+          <div className={tailwindClasses.card}>
             {windowData ? (
               <WindowDisplay
                 creatorLink={creatorLink}
@@ -955,12 +975,12 @@ export default function App() {
                 </button>
               </div>
             )}
-          </>
+          </div>
         );
       case 'submitted':
         const handleUpdateFeedback = () => setAppState('feedback');
         return (
-          <>
+          <div className={tailwindClasses.card}>
             <h1 className={tailwindClasses.heading}>Thank you for your feedback!</h1>
             <p className={tailwindClasses.subheading}>Your selections have been successfully submitted.</p>
             <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 justify-center">
@@ -977,7 +997,7 @@ export default function App() {
                 Create My Own Window
               </button>
             </div>
-          </>
+          </div>
         );
       default:
         return null;
@@ -989,8 +1009,22 @@ export default function App() {
       <HelpButton onClick={() => setShowHelp(true)} />
       <HelpModal show={showHelp} onClose={() => setShowHelp(false)} />
       <div className={tailwindClasses.container}>
-        <div className={tailwindClasses.card}>
-          {renderContent()}
+        {renderContent()}
+        <div className={tailwindClasses.adminLinkContainer}>
+          {appState === 'home' && (
+            <div className="flex flex-col items-center mt-4 space-y-2">
+                {adminSignInError && (
+                    <p className="text-red-500 font-semibold text-sm">{adminSignInError}</p>
+                )}
+                <button
+                    className="text-gray-500 hover:text-blue-600 transition-colors duration-200 text-sm"
+                    onClick={signInWithGoogle}
+                    disabled={!isAppReady}
+                >
+                    Admin Login
+                </button>
+            </div>
+          )}
         </div>
         <div className={tailwindClasses.debugPanel}>
           <h3 className={tailwindClasses.debugTitle}>Debug Log</h3>
