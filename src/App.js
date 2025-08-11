@@ -1,6 +1,6 @@
 import React, { useState, useEffect, createContext } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, collection, addDoc, updateDoc, getDoc, query, where, getDocs } from 'firebase/firestore';
 
 // Define the Firebase context to pass services to components
@@ -593,7 +593,7 @@ export default function App() {
   const signInWithGoogle = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      await signInWithRedirect(auth, provider);
     } catch (e) {
       console.error("Google Sign-In Error: ", e);
       setSnackbarMessage({ type: 'error', message: "Google Sign-In failed. Please try again." });
@@ -666,13 +666,10 @@ export default function App() {
         setDb(firestore);
         setAuth(authService);
 
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        if (initialAuthToken) {
-          await signInWithCustomToken(authService, initialAuthToken);
-        } else {
-          await signInAnonymously(authService);
-        }
-
+        // Handle redirect result first
+        await getRedirectResult(authService);
+        
+        // Check for existing user, otherwise sign in anonymously
         onAuthStateChanged(authService, (user) => {
           if (user) {
             setUserId(user.uid);
@@ -680,10 +677,15 @@ export default function App() {
             setIsAppReady(true);
             setDebugInfo(prev => ({...prev, userId: user.uid, isAdmin: ADMIN_IDS.includes(user.uid), appId: appIdString, message: "User signed in. App ready."}));
           } else {
-            setUserId(null);
-            setIsAdmin(false);
-            setIsAppReady(true);
-            setDebugInfo(prev => ({...prev, userId: null, isAdmin: false, appId: appIdString, message: "No user signed in. App ready."}));
+            // Sign in anonymously if no user is authenticated
+            signInAnonymously(authService).then(() => {
+              setIsAppReady(true);
+              setDebugInfo(prev => ({...prev, userId: null, isAdmin: false, appId: appIdString, message: "No user signed in. Signed in anonymously. App ready."}));
+            }).catch((e) => {
+              setAppError("Failed to sign in anonymously. Please check Firebase configuration.");
+              setDebugInfo(prev => ({...prev, error: e.message, message: "Anonymous sign-in failed."}));
+              setIsAppReady(false);
+            });
           }
         });
       } catch (e) {
