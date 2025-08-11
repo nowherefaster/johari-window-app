@@ -1,6 +1,6 @@
 import React, { useState, useEffect, createContext } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, collection, addDoc, updateDoc, getDoc, query, where, getDocs } from 'firebase/firestore';
 
 // Define the Firebase context to pass services to components
@@ -35,7 +35,7 @@ const tailwindClasses = {
   debugPanel: "bg-gray-800 text-gray-200 p-4 rounded-lg mt-8 max-w-2xl w-full font-mono text-left text-xs mb-20",
   debugTitle: "text-lg font-bold mb-2 text-white",
   debugLog: "whitespace-pre-wrap break-all",
-  adminLinkContainer: "w-full text-center mt-auto pb-4", // New class for the link container
+  adminLinkContainer: "w-full text-center mt-auto pb-4",
 };
 
 const adjectives = [
@@ -561,7 +561,6 @@ export default function App() {
   const [adminUids, setAdminUids] = useState([]);
   const [isAppReady, setIsAppReady] = useState(false);
   const [appError, setAppError] = useState(null);
-  const [adminSignInError, setAdminSignInError] = useState(null);
   const [appId, setAppId] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
   const [snackbarMessage, setSnackbarMessage] = useState(null);
@@ -578,19 +577,6 @@ export default function App() {
 
   const handleEditSelections = () => {
     setAppState('creatorAdjectiveSelection');
-  };
-
-  const signInWithGoogle = async () => {
-    setAdminSignInError(null);
-    try {
-      setDebugInfo(prev => ({...prev, message: "Attempting Google sign-in via redirect..."}));
-      const provider = new GoogleAuthProvider();
-      await signInWithRedirect(auth, provider);
-    } catch (e) {
-      console.error("Google Sign-In Error: ", e);
-      setAdminSignInError("Google sign in failed. Check the debug log for details.");
-      setDebugInfo(prev => ({...prev, message: "Failed to initiate Google sign-in redirect.", error: e.message}));
-    }
   };
 
   const handleSignOut = async () => {
@@ -627,81 +613,74 @@ export default function App() {
   // Effect to initialize Firebase and auth listener
   useEffect(() => {
     if (initialized) return;
+    setDebugInfo(prev => ({...prev, message: "Starting Firebase initialization..."}));
 
     const initializeFirebase = async () => {
-        try {
-            const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
-            const appIdString = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      try {
+        const firebaseConfigString = typeof process.env.REACT_APP_FIREBASE_CONFIG !== 'undefined' ? process.env.REACT_APP_FIREBASE_CONFIG : null;
+        const appIdString = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-            if (!firebaseConfigString) {
-                setAppError("Firebase configuration is missing.");
-                setDebugInfo(prev => ({...prev, error: "Firebase config is missing."}));
-                return;
-            }
-
-            const firebaseConfig = JSON.parse(firebaseConfigString);
-            if (!firebaseConfig || !firebaseConfig.projectId) {
-                setAppError("Firebase configuration is invalid.");
-                setDebugInfo(prev => ({...prev, error: "'projectId' not provided.", message: "Firebase init failed."}));
-                return;
-            }
-
-            setAppId(appIdString);
-            const app = initializeApp(firebaseConfig);
-            const firestore = getFirestore(app);
-            const authService = getAuth(app);
-            setDb(firestore);
-            setAuth(authService);
-            setInitialized(true);
-            setDebugInfo(prev => ({...prev, message: "Firebase initialized."}));
-
-            // Handle redirect result first
-            getRedirectResult(authService).then((result) => {
-                if (result) {
-                    setDebugInfo(prev => ({...prev, message: "Redirect result received. User signed in.", user: result.user}));
-                    // The auth listener below will handle the rest
-                }
-            }).catch((error) => {
-                console.error("Error during redirect result:", error);
-                setAdminSignInError("Google sign in failed. Check the debug log for details.");
-                setDebugInfo(prev => ({...prev, message: "Error processing redirect result.", error: error.code, detail: error.message}));
-            });
-
-            // Set up the main auth listener
-            const unsubscribe = onAuthStateChanged(authService, async (user) => {
-                if (user) {
-                    setUserId(user.uid);
-                    setIsAuthenticated(true);
-                    setDebugInfo(prev => ({...prev, userId: user.uid, message: "User signed in."}));
-                } else {
-                    try {
-                      const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                      if (token) {
-                          await signInWithCustomToken(authService, token);
-                          setDebugInfo(prev => ({...prev, message: "Signed in with custom token."}));
-                      } else {
-                          await signInAnonymously(authService);
-                          setDebugInfo(prev => ({...prev, message: "Signed in anonymously."}));
-                      }
-                    } catch (e) {
-                      setAppError("Failed to sign in. Check your Firebase configuration.");
-                      setDebugInfo(prev => ({...prev, error: e.message, message: "Initial sign-in failed."}));
-                    }
-                }
-            });
-
-            return () => unsubscribe();
-
-        } catch (e) {
-            console.error("Firebase initialization failed:", e);
-            setAppError("Failed to initialize Firebase. Check your configuration.");
-            setDebugInfo(prev => ({...prev, error: e.message, message: "Firebase init failed."}));
-            setIsAppReady(false);
+        if (!firebaseConfigString) {
+          throw new Error("Firebase configuration is missing. Ensure REACT_APP_FIREBASE_CONFIG is set.");
         }
+
+        let firebaseConfig = null;
+        try {
+          firebaseConfig = JSON.parse(firebaseConfigString);
+        } catch (parseError) {
+          throw new Error("Failed to parse Firebase configuration. The configuration string is not valid JSON.");
+        }
+
+        if (!firebaseConfig || !firebaseConfig.projectId) {
+          throw new Error("Firebase configuration is invalid or 'projectId' is missing.");
+        }
+
+        setAppId(appIdString);
+        setDebugInfo(prev => ({...prev, message: "Firebase config parsed. Initializing app."}));
+        const app = initializeApp(firebaseConfig);
+        const firestore = getFirestore(app);
+        const authService = getAuth(app);
+        setDb(firestore);
+        setAuth(authService);
+        setInitialized(true);
+        setDebugInfo(prev => ({...prev, message: "Firebase initialized successfully."}));
+
+        // Set up the main auth listener
+        const unsubscribe = onAuthStateChanged(authService, async (user) => {
+          if (user) {
+            setUserId(user.uid);
+            setIsAuthenticated(true);
+            setDebugInfo(prev => ({...prev, userId: user.uid, message: "User signed in."}));
+          } else {
+            setDebugInfo(prev => ({...prev, message: "No user signed in. Attempting anonymous or custom token sign-in."}));
+            try {
+              const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+              if (token) {
+                await signInWithCustomToken(authService, token);
+                setDebugInfo(prev => ({...prev, message: "Signed in with custom token."}));
+              } else {
+                await signInAnonymously(authService);
+                setDebugInfo(prev => ({...prev, message: "Signed in anonymously."}));
+              }
+            } catch (e) {
+              setAppError("Failed to sign in. Check your Firebase configuration.");
+              setDebugInfo(prev => ({...prev, error: e.message, message: "Initial sign-in failed."}));
+            }
+          }
+        });
+
+        return () => unsubscribe();
+
+      } catch (e) {
+        console.error("Firebase initialization failed:", e);
+        setAppError("Failed to initialize Firebase. Please check the debug log for more information.");
+        setDebugInfo(prev => ({...prev, error: e.message, message: "Firebase init failed. Fatal error."}));
+        setIsAppReady(false);
+      }
     };
 
     initializeFirebase();
-}, [initialized]);
+  }, [initialized]);
 
 // Effect to fetch admin UIDs and determine admin status
 useEffect(() => {
@@ -1010,22 +989,6 @@ useEffect(() => {
       <HelpModal show={showHelp} onClose={() => setShowHelp(false)} />
       <div className={tailwindClasses.container}>
         {renderContent()}
-        <div className={tailwindClasses.adminLinkContainer}>
-          {appState === 'home' && (
-            <div className="flex flex-col items-center mt-4 space-y-2">
-                {adminSignInError && (
-                    <p className="text-red-500 font-semibold text-sm">{adminSignInError}</p>
-                )}
-                <button
-                    className="text-gray-500 hover:text-blue-600 transition-colors duration-200 text-sm"
-                    onClick={signInWithGoogle}
-                    disabled={!isAppReady}
-                >
-                    Admin Login
-                </button>
-            </div>
-          )}
-        </div>
         <div className={tailwindClasses.debugPanel}>
           <h3 className={tailwindClasses.debugTitle}>Debug Log</h3>
           <pre className={tailwindClasses.debugLog}>
