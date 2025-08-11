@@ -129,7 +129,7 @@ const HelpModal = ({ show, onClose }) => {
 
 
 // Component for the welcome page with name input and a discreet admin login link
-const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady, setSnackbarMessage, signInWithGoogle }) => {
+const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady, setSnackbarMessage, signInWithGoogle, adminSignInError }) => {
   const handleStart = () => {
     if (!creatorName) {
       setSnackbarMessage({ type: 'error', message: "Please enter your name to begin." });
@@ -156,14 +156,17 @@ const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady, set
       >
         Start
       </button>
-      <div className="absolute bottom-4 left-4">
-        <button
-          className="text-gray-500 hover:text-blue-600 transition-colors duration-200 text-sm"
-          onClick={signInWithGoogle}
-          disabled={!isAppReady}
-        >
-          Admin Login
-        </button>
+      <div className="flex flex-col items-center mt-4 space-y-2">
+          {adminSignInError && (
+              <p className="text-red-500 font-semibold text-sm">{adminSignInError}</p>
+          )}
+          <button
+              className="text-gray-500 hover:text-blue-600 transition-colors duration-200 text-sm"
+              onClick={signInWithGoogle}
+              disabled={!isAppReady}
+          >
+              Admin Login
+          </button>
       </div>
     </>
   );
@@ -568,6 +571,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAppReady, setIsAppReady] = useState(false);
   const [appError, setAppError] = useState(null);
+  const [adminSignInError, setAdminSignInError] = useState(null);
   const [appId, setAppId] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
   const [snackbarMessage, setSnackbarMessage] = useState(null);
@@ -591,12 +595,15 @@ export default function App() {
   };
 
   const signInWithGoogle = async () => {
+    setAdminSignInError(null);
     try {
+      setDebugInfo(prev => ({...prev, message: "Attempting Google sign-in via redirect..."}));
       const provider = new GoogleAuthProvider();
       await signInWithRedirect(auth, provider);
     } catch (e) {
       console.error("Google Sign-In Error: ", e);
-      setSnackbarMessage({ type: 'error', message: "Google Sign-In failed. Please try again." });
+      setAdminSignInError("Google sign in failed. Check the debug log for details.");
+      setDebugInfo(prev => ({...prev, message: "Failed to initiate Google sign-in redirect.", error: e.message}));
     }
   };
 
@@ -665,17 +672,29 @@ export default function App() {
         const authService = getAuth(app);
         setDb(firestore);
         setAuth(authService);
-
+        
         // Handle redirect result first
-        await getRedirectResult(authService);
+        setDebugInfo(prev => ({...prev, message: "Checking for Google sign-in redirect result..."}));
+        getRedirectResult(authService).then((result) => {
+          if (result) {
+            setDebugInfo(prev => ({...prev, message: "Redirect result received.", user: result.user}));
+          } else {
+            setDebugInfo(prev => ({...prev, message: "No redirect result to process."}));
+          }
+        }).catch((error) => {
+          console.error("Error during redirect result:", error);
+          setAdminSignInError("Google sign in failed. Check the debug log for details.");
+          setDebugInfo(prev => ({...prev, message: "Error processing redirect result.", error: error.code, detail: error.message}));
+        });
         
         // Check for existing user, otherwise sign in anonymously
         onAuthStateChanged(authService, (user) => {
           if (user) {
             setUserId(user.uid);
-            setIsAdmin(ADMIN_IDS.includes(user.uid));
+            const isAdminUser = ADMIN_IDS.includes(user.uid);
+            setIsAdmin(isAdminUser);
             setIsAppReady(true);
-            setDebugInfo(prev => ({...prev, userId: user.uid, isAdmin: ADMIN_IDS.includes(user.uid), appId: appIdString, message: "User signed in. App ready."}));
+            setDebugInfo(prev => ({...prev, userId: user.uid, isAdmin: isAdminUser, appId: appIdString, message: "User signed in. App ready.", userObject: user}));
           } else {
             // Sign in anonymously if no user is authenticated
             signInAnonymously(authService).then(() => {
@@ -850,6 +869,7 @@ export default function App() {
             isAppReady={isAppReady}
             setSnackbarMessage={setSnackbarMessage}
             signInWithGoogle={signInWithGoogle}
+            adminSignInError={adminSignInError}
           />
         );
       case 'creatorAdjectiveSelection':
