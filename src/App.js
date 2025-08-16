@@ -1,10 +1,7 @@
-import React, { useState, useEffect, createContext, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, collection, addDoc, updateDoc, getDoc, query, where, getDocs } from 'firebase/firestore';
-
-// Define the Firebase context to pass services to components
-const FirebaseContext = createContext(null);
 
 // Tailwind CSS classes for a clean, professional look
 const tailwindClasses = {
@@ -14,11 +11,7 @@ const tailwindClasses = {
   subheading: "text-lg text-gray-600",
   buttonPrimary: "bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed",
   buttonSecondary: "bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-3 px-6 rounded-lg shadow-md transition duration-300 ease-in-out",
-  buttonGoogle: "flex items-center justify-center w-full bg-white border border-gray-300 text-gray-800 font-medium py-3 px-6 rounded-lg shadow-md hover:bg-gray-100 transition-colors duration-200 space-x-2",
-  buttonGoogleIcon: "w-5 h-5",
   input: "w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500",
-  linkContainer: "flex items-center space-x-2",
-  linkInput: "flex-grow p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-mono text-sm",
   copyButton: "bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 whitespace-nowrap",
   copyButtonFeedback: "bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md whitespace-nowrap",
   snackbar: "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full text-white font-bold shadow-lg transition-transform duration-300 ease-in-out transform",
@@ -35,7 +28,6 @@ const tailwindClasses = {
   debugPanel: "bg-gray-800 text-gray-200 p-4 rounded-lg mt-8 max-w-2xl w-full font-mono text-left text-xs mb-20",
   debugTitle: "text-lg font-bold mb-2 text-white",
   debugLog: "whitespace-pre-wrap break-all",
-  adminLinkContainer: "w-full text-center mt-auto pb-4",
 };
 
 const adjectives = [
@@ -47,324 +39,236 @@ const adjectives = [
   "Trustworthy", "Warm", "Wise", "Witty"
 ];
 
-// Reusable custom hook to manage adjective selection logic
-const useAdjectiveSelector = (initialSelections = []) => {
-    const [selectedAdjectives, setSelectedAdjectives] = useState(initialSelections);
-    const MAX_SELECTIONS = 5;
-
-    // Use useCallback to memoize the toggle function
-    const toggleAdjective = useCallback((adj) => {
-        const isSelected = selectedAdjectives.includes(adj);
-
-        if (isSelected) {
-            setSelectedAdjectives(prev => prev.filter(a => a !== adj));
-        } else {
-            if (selectedAdjectives.length < MAX_SELECTIONS) {
-                setSelectedAdjectives(prev => [...prev, adj]);
-            }
-        }
-    }, [selectedAdjectives]);
-
-    // Function to programmatically set the initial selections, useful for async data fetching
-    const setInitialAdjectives = useCallback((newSelections) => {
-        setSelectedAdjectives(newSelections);
-    }, []);
-
-    return { selectedAdjectives, toggleAdjective, setInitialAdjectives, MAX_SELECTIONS };
-};
-
-
-// Helper component for the floating help button
-const HelpButton = ({ onClick }) => (
-  <button
-    className="fixed top-4 right-4 z-50 p-3 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition-colors duration-200"
-    onClick={onClick}
-    aria-label="Open help guide"
-  >
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm-1 15h2v-6h-2v6zm0-8h2V7h-2v2z" />
-    </svg>
-  </button>
-);
-
-// Helper component for the help modal
-const HelpModal = ({ show, onClose }) => {
-  if (!show) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900 bg-opacity-75 overflow-y-auto" onClick={onClose}>
-      <div className="relative w-full max-w-2xl max-h-full bg-white rounded-lg shadow-xl p-6 md:p-8" onClick={e => e.stopPropagation()}>
-        <button
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors duration-200"
-          onClick={onClose}
-          aria-label="Close help guide"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-        <h2 className="text-2xl font-bold text-gray-800 mb-4">Guide to the Johari Window Team Exercise</h2>
-        <div className="space-y-6 text-gray-700 overflow-y-auto max-h-[80vh]">
-          <div>
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">What is the Johari Window?</h3>
-            <p>
-              The Johari Window is a communication tool designed to help people better understand their relationship with themselves and others. It's a simple and powerful way to map self-perception and external perception, leading to greater self-awareness and team dynamics.
-            </p>
-          </div>
-          <div>
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">The Four Quadrants</h3>
-            <div className="space-y-4">
-              <p>
-                <strong>Arena (Open Self):</strong> This quadrant contains adjectives selected by both you and your teammates. These are the traits you both recognize, representing your open and public self.
-              </p>
-              <p>
-                <strong>Blind Spot:</strong> This quadrant contains adjectives selected by your teammates but not by you. These are traits others see in you that you are unaware of, offering a valuable opportunity for self-discovery.
-              </p>
-              <p>
-                <strong>Facade (Hidden Self):</strong> This quadrant contains adjectives selected by you but not by your teammates. These are traits you know about yourself but keep hidden from others.
-              </p>
-              <p>
-                <strong>Unknown:</strong> This quadrant contains adjectives that were not selected by either you or your teammates. These represent traits that are yet to be discovered by anyone.
-              </p>
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">How to Use this Tool</h3>
-            <p>This tool is designed to be a simple, 3-step process for you and your team:</p>
-            <ol className="list-decimal list-inside space-y-2">
-              <li><strong>Step 1: Create your window.</strong> Begin by entering your name and selecting the five adjectives that you feel best describe you.</li>
-              <li><strong>Step 2: Share the link.</strong> Once you've created your window, a unique link will be generated. Share this link with your teammates so they can provide their feedback.</li>
-              <li><strong>Step 3: View your results.</strong> As feedback is submitted, your Johari Window will be populated in real-time, helping you visualize the collective perceptions and start a conversation.</li>
-            </ol>
-          </div>
-          <div>
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">Tips for a Productive Discussion</h3>
-            <p>
-              The Johari Window is most powerful when used as a starting point for open, honest, and constructive dialogue. Here are a few tips for your team discussion:
-            </p>
-            <ul className="list-disc list-inside space-y-2">
-              <li><strong>Focus on "Why":</strong> Instead of just looking at the adjectives, discuss the specific behaviors that led to certain perceptions. For example, if "dependable" is in your Blind Spot, ask your teammates for an example of when you demonstrated this quality.</li>
-              <li><strong>Practice Active Listening:</strong> Listen to your teammates' feedback without becoming defensive. Remember, this is a tool for self-discovery and growth, not a critique.</li>
-              <li><strong>Be Constructive, Not Critical:</strong> When giving feedback, focus on observable behaviors and use "I" statements. For example, say "I noticed you are very organized when you lead meetings," instead of "You are organized."</li>
-              <li><strong>Celebrate Strengths:</strong> Pay special attention to adjectives in the Arena (Open Self) and Blind Spot. These are your known and unknown strengths!</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// New component for the loading state with a spinner
-const LoadingScreen = ({ message }) => (
+const LoadingScreen = () => (
     <div className="fixed inset-0 bg-gray-50 flex flex-col items-center justify-center p-4">
         <div className="animate-spin rounded-full h-24 w-24 border-t-4 border-b-4 border-blue-500 mb-6"></div>
         <h1 className="text-3xl font-bold text-gray-800">Initializing App...</h1>
-        <p className="text-lg text-gray-600 mt-2">{message}</p>
+        <p className="text-lg text-gray-600 mt-2">Loading is a good thing! It means we are connected to the cloud and fetching your data.</p>
     </div>
 );
 
-// Component for the welcome page with name input
-const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) => {
-  const handleStart = () => {
-    if (!creatorName) {
-      return;
-    }
-    setAppState('creatorAdjectiveSelection');
-  };
+// Main App component
+export default function App() {
+  // Main app state
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [userId, setUserId] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [windowId, setWindowId] = useState(null);
+  const [windowData, setWindowData] = useState(null);
+  const [allWindowsData, setAllWindowsData] = useState(null);
 
-  return (
-    <>
-      <h1 className={tailwindClasses.heading}>Discover Your Johari Window</h1>
-      <p className={tailwindClasses.subheading}>A simple tool to help you and your team better understand your interpersonal dynamics.</p>
-      <input
-        type="text"
-        placeholder="Enter your name"
-        className={tailwindClasses.input}
-        value={creatorName}
-        onChange={(e) => setCreatorName(e.target.value)}
-      />
-      <button
-        className={tailwindClasses.buttonPrimary}
-        onClick={handleStart}
-        disabled={!isAppReady || creatorName.trim() === ''}
-      >
-        Start
-      </button>
-    </>
-  );
-};
+  // Form state
+  const [creatorName, setCreatorName] = useState('');
+  const [selfSelections, setSelfSelections] = useState([]);
+  const [feedbackSelections, setFeedbackSelections] = useState([]);
 
-// Component for the second step: adjective selection (now also handles editing)
-const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, userId, setDebugInfo, windowData, windowId, setSnackbarMessage }) => {
-  const { selectedAdjectives, toggleAdjective, MAX_SELECTIONS } = useAdjectiveSelector(windowData?.selfSelections);
-  const firebaseContext = React.useContext(FirebaseContext);
-  const db = firebaseContext.db;
+  // UI state
+  const [snackbarMessage, setSnackbarMessage] = useState(null);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [copyButtonText, setCopyButtonText] = useState("Copy Link");
 
-  const handleSaveSelections = async () => {
-    if (selectedAdjectives.length === 0) {
-      setSnackbarMessage({ type: 'error', message: "Please select at least one adjective." });
-      return;
-    }
-
+  // Constants from the Canvas environment
+  const appId = useMemo(() => typeof __app_id !== 'undefined' ? __app_id : 'default-app-id', []);
+  const firebaseConfig = useMemo(() => {
     try {
-      if (windowId) {
-        // Update existing document
-        const docRef = doc(db, `artifacts/${appId}/public/data/windows`, windowId);
-        await updateDoc(docRef, { selfSelections: selectedAdjectives });
-        setAppState('windowCreated');
-        setDebugInfo(prev => ({...prev, message: "Successfully updated window in Firestore.", docId: windowId}));
-      } else {
-        // Create new document
-        const windowsCollection = collection(db, `artifacts/${appId}/public/data/windows`);
-        const docRef = await addDoc(windowsCollection, {
-          creatorName: creatorName,
-          selfSelections: selectedAdjectives,
-          creatorId: userId,
-          createdAt: new Date()
-        });
-        setWindowId(docRef.id);
-        setAppState('windowCreated');
-        setDebugInfo(prev => ({...prev, message: "Successfully created window in Firestore.", docId: docRef.id}));
-      }
+      return JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
     } catch (e) {
-      console.error("Error saving document: ", e);
-      setSnackbarMessage({ type: 'error', message: "Failed to save selections. Please try again." });
-      setDebugInfo(prev => ({...prev, error: e.message, message: "Firestore write failed in handleSaveSelections."}));
+      return {};
     }
-  };
+  }, []);
+  const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-  const handleToggleAdjective = (adj) => {
-    const isSelected = selectedAdjectives.includes(adj);
-    toggleAdjective(adj);
-    if (!isSelected && selectedAdjectives.length >= MAX_SELECTIONS) {
-      setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-    } else {
-      setSnackbarMessage(null);
-    }
-  }
+  // Global Firebase instances
+  const [db, setDb] = useState(null);
+  const [auth, setAuth] = useState(null);
 
-  return (
-    <>
-      <h1 className={tailwindClasses.heading}>{windowId ? 'Edit Your Selections' : `Hello, ${creatorName}!`}</h1>
-      <p className={tailwindClasses.subheading}>Now, select the five adjectives you feel best describe you.</p>
-      <div className={tailwindClasses.adjectiveContainer}>
-        {adjectives.map((adj) => {
-          const isSelected = selectedAdjectives.includes(adj);
-          const isAtMax = selectedAdjectives.length >= MAX_SELECTIONS;
-          
-          let buttonClassName = tailwindClasses.adjectiveButton;
-          if (isSelected) {
-            buttonClassName = tailwindClasses.adjectiveButtonSelected;
-          } else if (isAtMax) {
-            buttonClassName = tailwindClasses.adjectiveButtonInactive;
-          }
-
-          return (
-            <button
-              key={adj}
-              className={buttonClassName}
-              onClick={() => handleToggleAdjective(adj)}
-            >
-              {adj}
-            </button>
-          );
-        })}
-      </div>
-      <button
-        className={tailwindClasses.buttonPrimary}
-        onClick={handleSaveSelections}
-        disabled={!isAppReady || selectedAdjectives.length === 0}
-      >
-        {windowId ? 'Update My Window' : 'Create My Window'}
-      </button>
-    </>
-  );
-};
-
-// Component for giving feedback
-const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appId, userId, setDebugInfo, setSnackbarMessage }) => {
-  const { selectedAdjectives, toggleAdjective, setInitialAdjectives, MAX_SELECTIONS } = useAdjectiveSelector();
-  const [feedbackDocId, setFeedbackDocId] = useState(null);
-  const firebaseContext = React.useContext(FirebaseContext);
-  const db = firebaseContext.db;
-
+  // 1. Unified Initialization and Data Fetching
   useEffect(() => {
-    if (!db || !windowId || !userId) return;
-
-    const fetchExistingFeedback = async () => {
+    const initAndFetch = async () => {
       try {
-        const feedbackCollectionRef = collection(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`);
-        const q = query(feedbackCollectionRef, where("creatorId", "==", userId));
-        const querySnapshot = await getDocs(q);
-
-        if (!querySnapshot.empty) {
-          const doc = querySnapshot.docs[0];
-          setFeedbackDocId(doc.id);
-          setInitialAdjectives(doc.data().selections); // Set initial state from fetched data
-          setDebugInfo(prev => ({...prev, message: `Existing feedback found and loaded for userId: ${userId}`}));
-        } else {
-          setDebugInfo(prev => ({...prev, message: `No existing feedback found for userId: ${userId}`}));
+        // Initialize Firebase
+        if (Object.keys(firebaseConfig).length === 0) {
+          throw new Error("Firebase configuration is missing or invalid.");
         }
+        const app = initializeApp(firebaseConfig);
+        const firestore = getFirestore(app);
+        const authService = getAuth(app);
+        setDb(firestore);
+        setAuth(authService);
+
+        // Sign in user
+        let user = authService.currentUser;
+        if (!user) {
+          user = initialAuthToken
+            ? (await signInWithCustomToken(authService, initialAuthToken)).user
+            : (await signInAnonymously(authService)).user;
+        }
+        setUserId(user.uid);
+
+        // Check for admin status
+        const adminDocRef = doc(firestore, `artifacts/${appId}/public/data/admins`, user.uid);
+        const adminDocSnap = await getDoc(adminDocRef);
+        setIsAdmin(adminDocSnap.exists());
+        
+        // Get window ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const idFromUrl = urlParams.get('windowId');
+        setWindowId(idFromUrl);
+
+        // Handle initial data fetch based on user role and URL
+        if (adminDocSnap.exists()) {
+          // Admin dashboard data
+          const windowsCollectionRef = collection(firestore, `artifacts/${appId}/public/data/windows`);
+          onSnapshot(windowsCollectionRef, async (querySnapshot) => {
+            const windows = [];
+            for (const docSnap of querySnapshot.docs) {
+              const feedbackCollectionRef = collection(firestore, `artifacts/${appId}/public/data/windows/${docSnap.id}/feedback`);
+              const feedbackDocs = await getDocs(feedbackCollectionRef);
+              windows.push({
+                id: docSnap.id,
+                ...docSnap.data(),
+                responsesCount: feedbackDocs.docs.length
+              });
+            }
+            setAllWindowsData(windows);
+          });
+        }
+        
+        if (idFromUrl) {
+          // Single window data fetch for both creator and feedback provider
+          const windowDocRef = doc(firestore, `artifacts/${appId}/public/data/windows`, idFromUrl);
+          const feedbackCollectionRef = collection(firestore, `artifacts/${appId}/public/data/windows/${idFromUrl}/feedback`);
+
+          // Main window listener
+          onSnapshot(windowDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+              setWindowData(prevData => ({ ...prevData, ...docSnap.data(), id: docSnap.id }));
+            } else {
+              setError("Window not found. Please check the URL.");
+              setLoading(false);
+            }
+          });
+
+          // Feedback listener
+          onSnapshot(feedbackCollectionRef, (querySnapshot) => {
+            const feedbackDocs = querySnapshot.docs.map(d => d.data());
+            setWindowData(prevData => ({ ...prevData, feedback: feedbackDocs }));
+            
+            // Check if current user has provided feedback
+            const existingFeedback = feedbackDocs.find(f => f.creatorId === user.uid);
+            if (existingFeedback) {
+              setFeedbackSelections(existingFeedback.selections);
+            }
+          });
+        }
+        
+        // Final state change to show the app
+        setLoading(false);
       } catch (e) {
-        console.error("Error fetching existing feedback: ", e);
-        setDebugInfo(prev => ({...prev, error: e.message, message: "Failed to fetch existing feedback."}));
+        console.error("Initialization failed:", e);
+        setError("Failed to initialize. " + e.message);
+        setLoading(false);
       }
     };
+    initAndFetch();
+  }, [firebaseConfig, initialAuthToken, appId]);
 
-    fetchExistingFeedback();
-  }, [db, windowId, userId, appId, setDebugInfo, setInitialAdjectives]);
-
-  const handleToggleAdjective = (adj) => {
-    const isSelected = selectedAdjectives.includes(adj);
-    toggleAdjective(adj);
-    if (!isSelected && selectedAdjectives.length >= MAX_SELECTIONS) {
-      setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-    } else {
-      setSnackbarMessage(null);
-    }
-  }
-
-  const handleSubmitFeedback = async () => {
-    if (selectedAdjectives.length === 0) {
+  // Handle all UI actions (simplified and centralized)
+  const handleCreateOrUpdateWindow = useCallback(async () => {
+    if (!db || selfSelections.length === 0) {
       setSnackbarMessage({ type: 'error', message: "Please select at least one adjective." });
       return;
     }
-
     try {
-      const feedbackCollection = collection(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`);
-
-      if (feedbackDocId) {
-        // Update existing document
-        const docRef = doc(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`, feedbackDocId);
-        await updateDoc(docRef, { selections: selectedAdjectives });
-        setDebugInfo(prev => ({...prev, message: `Successfully updated feedback document ID: ${feedbackDocId}`}));
+      const data = {
+        creatorName,
+        selfSelections,
+        creatorId: userId,
+        createdAt: new Date(),
+      };
+      if (windowId) {
+        await updateDoc(doc(db, `artifacts/${appId}/public/data/windows`, windowId), data);
       } else {
-        // Create new document
-        await addDoc(feedbackCollection, {
-          selections: selectedAdjectives,
-          creatorId: userId,
-          createdAt: new Date(),
-        });
-        setDebugInfo(prev => ({...prev, message: "Successfully submitted NEW feedback to subcollection."}));
+        const newDocRef = await addDoc(collection(db, `artifacts/${appId}/public/data/windows`), data);
+        window.history.pushState({}, '', `?windowId=${newDocRef.id}`);
+        setWindowId(newDocRef.id);
       }
-      setAppState('submitted');
+      setSnackbarMessage({ type: 'success', message: "Window saved successfully!" });
+    } catch (e) {
+      console.error("Error saving document: ", e);
+      setSnackbarMessage({ type: 'error', message: "Failed to save. Please try again." });
+    }
+  }, [db, appId, creatorName, selfSelections, userId, windowId]);
+
+  const handleSubmitFeedback = useCallback(async () => {
+    if (!db || feedbackSelections.length === 0) {
+      setSnackbarMessage({ type: 'error', message: "Please select at least one adjective." });
+      return;
+    }
+    try {
+      const feedbackCollectionRef = collection(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`);
+      
+      const existingFeedbackQuery = query(feedbackCollectionRef, where("creatorId", "==", userId));
+      const querySnapshot = await getDocs(existingFeedbackQuery);
+      
+      if (!querySnapshot.empty) {
+        const feedbackDocId = querySnapshot.docs[0].id;
+        await updateDoc(doc(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`, feedbackDocId), { selections: feedbackSelections });
+      } else {
+        await addDoc(feedbackCollectionRef, { selections: feedbackSelections, creatorId: userId, createdAt: new Date() });
+      }
+      setSnackbarMessage({ type: 'success', message: "Feedback submitted successfully!" });
     } catch (e) {
       console.error("Error submitting feedback: ", e);
       setSnackbarMessage({ type: 'error', message: "Failed to submit feedback. Please try again." });
-      setDebugInfo(prev => ({...prev, error: e.message, message: "Firestore write failed in handleSubmitFeedback."}));
+    }
+  }, [db, appId, windowId, feedbackSelections, userId]);
+
+  const handleCopyLink = () => {
+    const link = `${window.location.origin}${window.location.pathname}?windowId=${windowId}`;
+    navigator.clipboard.writeText(link)
+      .then(() => {
+        setCopyButtonText("Copied!");
+        setTimeout(() => setCopyButtonText("Copy Link"), 2000);
+      })
+      .catch(() => {
+        setSnackbarMessage({ type: 'error', message: "Failed to copy link. Please copy it manually." });
+      });
+  };
+
+  const handleCreateNewWindow = () => {
+    setWindowId(null);
+    setCreatorName('');
+    setSelfSelections([]);
+    window.history.pushState({}, '', window.location.pathname);
+  };
+
+  const toggleAdjective = (adj, type) => {
+    const selections = type === 'self' ? selfSelections : feedbackSelections;
+    const setter = type === 'self' ? setSelfSelections : setFeedbackSelections;
+    const isSelected = selections.includes(adj);
+    const MAX_SELECTIONS = 5;
+
+    if (isSelected) {
+      setter(prev => prev.filter(a => a !== adj));
+    } else if (selections.length < MAX_SELECTIONS) {
+      setter(prev => [...prev, adj]);
+    } else {
+      setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
     }
   };
 
-  return (
-    <>
-      <h1 className={tailwindClasses.heading}>Give Feedback to {creatorName}</h1>
-      <p className={tailwindClasses.subheading}>Now, select the five adjectives you feel best describe them.</p>
+  // --- UI Rendering Logic ---
+  const renderAdjectiveSelector = (type) => {
+    const selections = type === 'self' ? selfSelections : feedbackSelections;
+    const MAX_SELECTIONS = 5;
+
+    return (
       <div className={tailwindClasses.adjectiveContainer}>
         {adjectives.map((adj) => {
-          const isSelected = selectedAdjectives.includes(adj);
-          const isAtMax = selectedAdjectives.length >= MAX_SELECTIONS;
-
+          const isSelected = selections.includes(adj);
+          const isAtMax = selections.length >= MAX_SELECTIONS;
           let buttonClassName = tailwindClasses.adjectiveButton;
           if (isSelected) {
             buttonClassName = tailwindClasses.adjectiveButtonSelected;
@@ -375,639 +279,261 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
             <button
               key={adj}
               className={buttonClassName}
-              onClick={() => handleToggleAdjective(adj)}
+              onClick={() => toggleAdjective(adj, type)}
+              disabled={isAtMax && !isSelected}
             >
               {adj}
             </button>
           );
         })}
       </div>
-      <button
-        className={tailwindClasses.buttonPrimary}
-        onClick={handleSubmitFeedback}
-        disabled={!isAppReady || selectedAdjectives.length === 0}
-      >
-        Submit Feedback
-      </button>
-    </>
-  );
-};
-
-// Component to display the creator's window (used by both admins and creators)
-const WindowDisplay = ({ windowData, setAppState, setWindowId, handleCreateNewWindow, userId, handleEditSelections, isAdmin }) => {
-  const [copyButtonText, setCopyButtonText] = useState("Copy Link");
-
-  // Function to copy link and provide feedback (only for non-admins)
-  const handleCopyLink = () => {
-    if (isAdmin) return;
-    const creatorLink = `${window.location.origin}${window.location.pathname}?windowId=${windowData.windowId}`;
-    const linkInput = document.getElementById('creatorLinkInput');
-    linkInput.select();
-    document.execCommand('copy');
-    setCopyButtonText("Copied!");
-    setTimeout(() => setCopyButtonText("Copy Link"), 2000);
+    );
   };
 
-  // Logic to calculate the four quadrants
-  const selfSelections = windowData?.selfSelections || [];
-  const allFeedback = windowData?.feedback || [];
-  const feedbackSelections = new Set();
-  
-  const allSelections = [...selfSelections];
-  allFeedback.forEach(feedbackDoc => {
-      allSelections.push(...feedbackDoc.selections);
-  });
+  const renderWindowDisplay = () => {
+    if (!windowData) {
+      return <p className={tailwindClasses.subheading}>Loading window data...</p>;
+    }
 
-  const masterCounts = {};
-  allSelections.forEach(adj => {
-      masterCounts[adj] = (masterCounts[adj] || 0) + 1;
-  });
+    const selfSelectionsSet = new Set(windowData.selfSelections);
+    const allFeedbackSelections = windowData.feedback?.flatMap(f => f.selections) || [];
+    const feedbackSelectionsSet = new Set(allFeedbackSelections);
+    const feedbackCounts = allFeedbackSelections.reduce((acc, adj) => {
+      acc[adj] = (acc[adj] || 0) + 1;
+      return acc;
+    }, {});
 
-  allFeedback.forEach(feedbackDoc => {
-      feedbackDoc.selections.forEach(adj => {
-          feedbackSelections.add(adj);
-      });
-  });
+    const arena = adjectives.filter(adj => selfSelectionsSet.has(adj) && feedbackSelectionsSet.has(adj));
+    const blindSpot = adjectives.filter(adj => !selfSelectionsSet.has(adj) && feedbackSelectionsSet.has(adj));
+    const facade = adjectives.filter(adj => selfSelectionsSet.has(adj) && !feedbackSelectionsSet.has(adj));
+    const unknown = adjectives.filter(adj => !selfSelectionsSet.has(adj) && !feedbackSelectionsSet.has(adj));
 
-  const arena = adjectives.filter(adj => selfSelections.includes(adj) && feedbackSelections.has(adj));
-  const blindSpot = adjectives.filter(adj => !selfSelections.includes(adj) && feedbackSelections.has(adj));
-  const facade = adjectives.filter(adj => selfSelections.includes(adj) && !feedbackSelections.has(adj));
-  const unknown = adjectives.filter(adj => !selfSelections.includes(adj) && !feedbackSelections.has(adj));
-
-  const responsesCount = allFeedback.length;
-
-  const renderAdjectiveList = (adjectiveArray) => {
+    const renderAdjectiveList = (adjectiveArray) => {
       return adjectiveArray.length > 0 ? (
-          adjectiveArray.map(adj => {
-              const count = masterCounts[adj] || 0;
-              return (
-                  <li key={adj} className={`${tailwindClasses.adjectiveListItem} flex justify-between items-center`}>
-                      <span>{adj}</span>
-                      {count > 1 && (
-                          <span className="text-sm font-semibold text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">
-                              {count}
-                          </span>
-                      )}
-                  </li>
-              );
-          })
-      ) : (
-          <p>No adjectives in this quadrant yet.</p>
-      );
-  };
-
-  return (
-    <>
-      <h1 className={tailwindClasses.heading}>{windowData.creatorName}'s Johari Window</h1>
-      {!isAdmin && <p className={tailwindClasses.subheading}>Share this link with your teammates to get feedback!</p>}
-      
-      {!isAdmin && (
-        <div className="flex flex-col items-center justify-center space-y-4 w-full">
-          <input
-            type="text"
-            id="creatorLinkInput"
-            readOnly
-            value={`${window.location.origin}${window.location.pathname}?windowId=${windowData.windowId}`}
-            className={tailwindClasses.input}
-            onClick={(e) => e.target.select()}
-          />
-          <button
-            className={copyButtonText === "Copied!" ? tailwindClasses.copyButtonFeedback : tailwindClasses.copyButton}
-            onClick={handleCopyLink}
-          >
-            {copyButtonText}
-          </button>
-        </div>
-      )}
-
-      <p className="text-lg font-bold text-gray-800 mt-4">{responsesCount} Teammate Response{responsesCount !== 1 ? 's' : ''}</p>
-
-      <div className={tailwindClasses.quadrantContainer}>
-        <div className={tailwindClasses.quadrant}>
-          <h3 className={tailwindClasses.quadrantTitle}>Arena (Open)</h3>
-          <ul className={tailwindClasses.adjectiveList}>
-            {renderAdjectiveList(arena)}
-          </ul>
-        </div>
-        <div className={tailwindClasses.quadrant}>
-          <h3 className={tailwindClasses.quadrantTitle}>Blind Spot</h3>
-          <ul className={tailwindClasses.adjectiveList}>
-            {renderAdjectiveList(blindSpot)}
-          </ul>
-        </div>
-        <div className={tailwindClasses.quadrant}>
-          <h3 className={tailwindClasses.quadrantTitle}>Facade (Hidden)</h3>
-          <ul className={tailwindClasses.adjectiveList}>
-            {renderAdjectiveList(facade)}
-          </ul>
-        </div>
-        <div className={tailwindClasses.quadrant}>
-          <h3 className={tailwindClasses.quadrantTitle}>Unknown</h3>
-          <ul className={tailwindClasses.adjectiveList}>
-            {renderAdjectiveList(unknown)}
-          </ul>
-        </div>
-      </div>
-      <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 justify-center">
-        {userId && windowData.creatorId === userId && (
-          <button
-            className={tailwindClasses.buttonSecondary}
-            onClick={handleEditSelections}
-          >
-            Edit My Selections
-          </button>
-        )}
-        <button
-          className={tailwindClasses.buttonPrimary}
-          onClick={() => isAdmin ? setAppState('adminDashboard') : handleCreateNewWindow()}
-        >
-          {isAdmin ? 'Back to Dashboard' : 'Create Another Window'}
-        </button>
-      </div>
-    </>
-  );
-};
-
-
-// New component for the admin dashboard
-const AdminDashboard = ({ setAppState, setWindowId, allWindowsData, handleSignOut }) => {
-  const handleViewWindow = (id) => {
-    setWindowId(id);
-    setAppState('adminViewWindow');
-  };
-
-  return (
-    <>
-      <h1 className={tailwindClasses.heading}>Admin Dashboard</h1>
-      <p className={tailwindClasses.subheading}>Click a name to view their Johari Window.</p>
-      {allWindowsData.length > 0 ? (
-        <div className="space-y-2 mt-6 max-h-96 overflow-y-auto w-full">
-          {allWindowsData.map(window => (
-            <button
-              key={window.id}
-              onClick={() => handleViewWindow(window.id)}
-              className="w-full text-left p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors duration-200 shadow-sm"
-            >
-              <div className="text-gray-800 font-semibold">{window.creatorName}</div>
-              <div className="text-gray-500 text-sm">{window.responsesCount} teammate response(s)</div>
-            </button>
+        <ul className={tailwindClasses.adjectiveList}>
+          {adjectiveArray.map(adj => (
+            <li key={adj} className={`${tailwindClasses.adjectiveListItem} flex justify-between items-center`}>
+              <span>{adj}</span>
+              {feedbackCounts[adj] > 1 && (
+                <span className="text-sm font-semibold text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">
+                  {feedbackCounts[adj]}
+                </span>
+              )}
+            </li>
           ))}
-        </div>
+        </ul>
       ) : (
-        <p className="mt-6 text-gray-500">No Johari Windows have been created yet.</p>
-      )}
-      <button className={tailwindClasses.buttonSecondary} onClick={handleSignOut}>
-        Sign Out
-      </button>
-    </>
-  );
-};
-
-
-// Custom Hook for Firebase Initialization and Authentication
-const useFirebase = () => {
-    const [db, setDb] = useState(null);
-    const [auth, setAuth] = useState(null);
-    const [userId, setUserId] = useState(null);
-    const [isAdmin, setIsAdmin] = useState(false);
-    const [isAppReady, setIsAppReady] = useState(false);
-    const [appError, setAppError] = useState(null);
-    const [appId, setAppId] = useState(null);
-    const [debugInfo, setDebugInfo] = useState({});
-
-    const firebaseConfig = useMemo(() => {
-        try {
-            return JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        } catch (e) {
-            return {};
-        }
-    }, []);
-
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-    const providedAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-    useEffect(() => {
-        const initializeAndAuthenticate = async () => {
-            try {
-                if (Object.keys(firebaseConfig).length === 0) {
-                    throw new Error("Firebase configuration is missing or invalid.");
-                }
-
-                const app = initializeApp(firebaseConfig);
-                const firestore = getFirestore(app);
-                const authService = getAuth(app);
-
-                setAppId(providedAppId);
-                setDb(firestore);
-                setAuth(authService);
-                setDebugInfo(prev => ({ ...prev, message: "Firebase initialized." }));
-
-                let user = authService.currentUser;
-                if (!user) {
-                    try {
-                        const userCredential = initialAuthToken
-                            ? await signInWithCustomToken(authService, initialAuthToken)
-                            : await signInAnonymously(authService);
-                        user = userCredential.user;
-                        setDebugInfo(prev => ({ ...prev, message: "User signed in.", authMethod: initialAuthToken ? "custom token" : "anonymous" }));
-                    } catch (authError) {
-                        throw new Error("Authentication failed: " + authError.message);
-                    }
-                } else {
-                    setDebugInfo(prev => ({ ...prev, message: "Existing user found.", userId: user.uid }));
-                }
-
-                if (user) {
-                    setUserId(user.uid);
-                    setDebugInfo(prev => ({ ...prev, message: `User ID set: ${user.uid}` }));
-                    const adminsRef = collection(firestore, `artifacts/${providedAppId}/public/data/admins`);
-                    const adminsSnapshot = await getDocs(adminsRef);
-                    const adminUids = adminsSnapshot.docs.map(d => d.id);
-                    setIsAdmin(adminUids.includes(user.uid));
-                    setDebugInfo(prev => ({ ...prev, message: `Admin check complete. Is admin: ${adminUids.includes(user.uid)}` }));
-                }
-
-                setIsAppReady(true);
-                setDebugInfo(prev => ({ ...prev, message: "App is ready." }));
-
-            } catch (e) {
-                console.error("Initialization failed:", e);
-                setAppError("Failed to initialize. " + e.message);
-                setIsAppReady(false);
-                setDebugInfo(prev => ({ ...prev, message: "Initialization failed. Error set." }));
-            }
-        };
-
-        initializeAndAuthenticate();
-
-    }, [firebaseConfig, initialAuthToken, providedAppId]);
-
-    return { db, auth, userId, isAdmin, isAppReady, appError, appId, debugInfo, setDebugInfo };
-};
-
-// Custom hook for fetching and managing a single Johari Window's data
-const useJohariData = (db, appId, windowId, userId, isAdmin, setDebugInfo, setAppState) => {
-  const [windowData, setWindowData] = useState(null);
-
-  useEffect(() => {
-    if (!db || !windowId || !appId) return;
-
-    setDebugInfo(prev => ({...prev, message: "onSnapshot listener for window started."}));
-
-    const unsubWindow = onSnapshot(doc(db, `artifacts/${appId}/public/data/windows`, windowId), (docSnap) => {
-      setDebugInfo(prev => ({...prev, message: "onSnapshot callback fired for main window.", docExists: docSnap.exists()}));
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setWindowData(prevData => ({ ...prevData, creatorName: data.creatorName, selfSelections: data.selfSelections, creatorId: data.creatorId, windowId: docSnap.id }));
-
-        // Determine app state based on user type and data
-        if (isAdmin) {
-          setAppState('adminViewWindow');
-        } else if (data.creatorId === userId) {
-          setAppState('windowCreated');
-        } else {
-          setAppState('feedback');
-        }
-        setDebugInfo(prev => ({...prev, message: "Window data received and state updated.", creatorData: data}));
-      } else {
-        setAppState('error');
-        setDebugInfo(prev => ({...prev, message: "onSnapshot callback fired, but document does not exist."}));
-      }
-    });
-
-    const unsubFeedback = onSnapshot(collection(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`), (querySnapshot) => {
-      const feedbackDocs = [];
-      querySnapshot.forEach(doc => {
-        feedbackDocs.push(doc.data());
-      });
-      setWindowData(prevData => ({ ...prevData, feedback: feedbackDocs }));
-      setDebugInfo(prev => ({...prev, message: "Feedback data received from subcollection.", feedbackData: feedbackDocs}));
-    });
-
-    return () => {
-      setDebugInfo(prev => ({...prev, message: "onSnapshot listeners unsubscribed."}));
-      unsubWindow();
-      unsubFeedback();
+        <p>No adjectives in this quadrant yet.</p>
+      );
     };
-  }, [db, windowId, appId, userId, isAdmin, setDebugInfo, setAppState]);
 
-  return windowData;
-};
-
-// NEW custom hook for the admin dashboard data
-const useAdminDashboard = (db, appId, isAdmin, isAppReady, setDebugInfo) => {
-  const [allWindowsData, setAllWindowsData] = useState([]);
-  
-  useEffect(() => {
-    if (!db || !isAppReady || !appId || !isAdmin) return;
-  
-    setDebugInfo(prev => ({...prev, message: "Admin onSnapshot listener for all windows started."}));
-  
-    const unsubAllWindows = onSnapshot(collection(db, `artifacts/${appId}/public/data/windows`), async (querySnapshot) => {
-      setDebugInfo(prev => ({...prev, message: "Admin onSnapshot callback fired for all windows."}));
-      const windows = [];
-      for (const docSnap of querySnapshot.docs) {
-        const feedbackCollectionRef = collection(db, `artifacts/${appId}/public/data/windows/${docSnap.id}/feedback`);
-        const feedbackDocs = await getDocs(feedbackCollectionRef);
-        const responsesCount = feedbackDocs.docs.length;
-        windows.push({
-          id: docSnap.id,
-          ...docSnap.data(),
-          responsesCount
-        });
-      }
-      setAllWindowsData(windows);
-      setDebugInfo(prev => ({...prev, message: `Admin dashboard updated with ${windows.length} windows.`}));
-    });
-    
-    return () => {
-      setDebugInfo(prev => ({...prev, message: "Admin onSnapshot listener unsubscribed."}));
-      unsubAllWindows();
-    };
-  }, [db, isAppReady, appId, isAdmin, setDebugInfo]);
-
-  return allWindowsData;
-}
-
-
-// Main App component
-export default function App() {
-  const [appState, setAppState] = useState('home');
-  const [windowId, setWindowId] = useState(null);
-  const [creatorName, setCreatorName] = useState('');
-  const [snackbarMessage, setSnackbarMessage] = useState(null);
-  const [showHelp, setShowHelp] = useState(false);
-  const [showDebugPanel, setShowDebugPanel] = useState(false); // New state for toggling the debug panel
-
-  // Consume state and services from the custom hooks
-  const { db, auth, userId, isAdmin, isAppReady, appError, appId, debugInfo, setDebugInfo } = useFirebase();
-  const windowData = useJohariData(db, appId, windowId, userId, isAdmin, setDebugInfo, setAppState);
-  const allWindowsData = useAdminDashboard(db, appId, isAdmin, isAppReady, setDebugInfo);
-
-  const handleCreateNewWindow = () => {
-    setWindowId(null);
-    setAppState('home');
-    setCreatorName('');
+    return (
+      <>
+        <h1 className={tailwindClasses.heading}>{windowData.creatorName}'s Johari Window</h1>
+        <p className={tailwindClasses.subheading}>
+          {windowData.feedback?.length || 0} Teammate Response{windowData.feedback?.length !== 1 ? 's' : ''}
+        </p>
+        <div className={tailwindClasses.quadrantContainer}>
+          <div className={tailwindClasses.quadrant}>
+            <h3 className={tailwindClasses.quadrantTitle}>Arena (Open)</h3>
+            {renderAdjectiveList(arena)}
+          </div>
+          <div className={tailwindClasses.quadrant}>
+            <h3 className={tailwindClasses.quadrantTitle}>Blind Spot</h3>
+            {renderAdjectiveList(blindSpot)}
+          </div>
+          <div className={tailwindClasses.quadrant}>
+            <h3 className={tailwindClasses.quadrantTitle}>Facade (Hidden)</h3>
+            {renderAdjectiveList(facade)}
+          </div>
+          <div className={tailwindClasses.quadrant}>
+            <h3 className={tailwindClasses.quadrantTitle}>Unknown</h3>
+            {renderAdjectiveList(unknown)}
+          </div>
+        </div>
+      </>
+    );
   };
-
-  const handleEditSelections = () => {
-    setAppState('creatorAdjectiveSelection');
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-      setAppState('home');
-      setWindowId(null);
-    } catch (e) {
-      console.error("Sign-out error: ", e);
-      setSnackbarMessage({ type: 'error', message: "Sign out failed. Please try again." });
-    }
-  };
-
-  useEffect(() => {
-    if (snackbarMessage) {
-      const timer = setTimeout(() => {
-        setSnackbarMessage(null);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [snackbarMessage]);
-
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const id = urlParams.get('windowId');
-    if (id) {
-      setWindowId(id);
-    }
-  }, []);
-
+  
   const renderContent = () => {
-    // Show a loading screen if the app is not ready
-    if (!isAppReady) {
-      return <LoadingScreen message={debugInfo.message} />;
+    // Primary loading state
+    if (loading) {
+      return <LoadingScreen />;
     }
-
-    if (appError) {
+    
+    // Error state
+    if (error) {
       return (
         <div className={tailwindClasses.card}>
           <h1 className={tailwindClasses.heading}>Application Error</h1>
           <p className={`${tailwindClasses.subheading} text-red-500 font-semibold`}>
-            {appError}
+            {error}
           </p>
         </div>
       );
     }
-
-    if (isAdmin && appState === 'home') {
-      setAppState('adminDashboard');
-    }
-
-    if (isAdmin && appState !== 'adminDashboard' && appState !== 'adminViewWindow') {
-      return (
-        <div className={tailwindClasses.card}>
-          <p className={tailwindClasses.subheading}>
-            Signed in as admin. Redirecting to dashboard...
-          </p>
-        </div>
-      );
-    }
-
-    if (isAdmin && appState === 'adminDashboard') {
-      return (
-        <div className={tailwindClasses.card}>
-          <AdminDashboard
-            setAppState={setAppState}
-            setWindowId={setWindowId}
-            allWindowsData={allWindowsData}
-            handleSignOut={handleSignOut}
-          />
-        </div>
-      );
-    }
-
-    if (isAdmin && appState === 'adminViewWindow') {
-      return windowData ? (
-        <div className={tailwindClasses.card}>
-          <WindowDisplay
-            windowData={windowData}
-            setAppState={setAppState}
-            setWindowId={setWindowId}
-            isAppReady={isAppReady}
-            handleCreateNewWindow={handleCreateNewWindow}
-            userId={userId}
-            handleEditSelections={handleEditSelections}
-            isAdmin={true}
-          />
-        </div>
-      ) : (
-        <div className={tailwindClasses.card}>
-          <p className={tailwindClasses.subheading}>Loading window data...</p>
-        </div>
-      );
-    }
-
-    switch (appState) {
-      case 'home':
+    
+    // Admin Dashboard
+    if (isAdmin) {
+      if (!windowId) {
         return (
           <div className={tailwindClasses.card}>
-            <WelcomePage
-              setAppState={setAppState}
-              creatorName={creatorName}
-              setCreatorName={setCreatorName}
-              isAppReady={isAppReady}
-            />
-          </div>
-        );
-      case 'creatorAdjectiveSelection':
-        return (
-          <div className={tailwindClasses.card}>
-            <Creator
-              setAppState={setAppState}
-              setWindowId={setWindowId}
-              creatorName={creatorName}
-              isAppReady={isAppReady}
-              userId={userId}
-              appId={appId}
-              setDebugInfo={setDebugInfo}
-              windowData={windowData}
-              windowId={windowId}
-              setSnackbarMessage={setSnackbarMessage}
-            />
-          </div>
-        );
-      case 'feedback':
-        return (
-          <div className={tailwindClasses.card}>
-            <FeedbackProvider
-              windowId={windowId}
-              creatorName={creatorName}
-              setAppState={setAppState}
-              isAppReady={isAppReady}
-              appId={appId}
-              userId={userId}
-              setDebugInfo={setDebugInfo}
-              setSnackbarMessage={setSnackbarMessage}
-            />
-          </div>
-        );
-      case 'error':
-        return (
-          <div className={tailwindClasses.card}>
-            <h1 className={tailwindClasses.heading}>Error</h1>
-            <p className={tailwindClasses.subheading}>
-              The link you're using is invalid. Please check the URL or ask the creator to send you a new link.
-            </p>
-          </div>
-        );
-      case 'windowCreated':
-        const creatorLink = `${window.location.origin}${window.location.pathname}?windowId=${windowId}`;
-        return (
-          <div className={tailwindClasses.card}>
-            {windowData ? (
-              <WindowDisplay
-                creatorLink={creatorLink}
-                windowData={windowData}
-                setAppState={setAppState}
-                setWindowId={setWindowId}
-                isAppReady={isAppReady}
-                handleCreateNewWindow={handleCreateNewWindow}
-                userId={userId}
-                handleEditSelections={handleEditSelections}
-              />
-            ) : (
-              <div>
-                <h1 className={tailwindClasses.heading}>Your window is ready!</h1>
-                <p className={tailwindClasses.subheading}>
-                  Share this link to get feedback from your teammates.
-                </p>
-                <div className="flex flex-col items-center justify-center space-y-4 w-full">
-                  <input
-                    type="text"
-                    id="creatorLinkInput"
-                    readOnly
-                    value={creatorLink}
-                    className={tailwindClasses.input}
-                    onClick={(e) => e.target.select()}
-                  />
+            <h1 className={tailwindClasses.heading}>Admin Dashboard</h1>
+            <p className={tailwindClasses.subheading}>Click a name to view their Johari Window.</p>
+            {allWindowsData?.length > 0 ? (
+              <div className="space-y-2 mt-6 max-h-96 overflow-y-auto w-full">
+                {allWindowsData.map(w => (
                   <button
-                    className={tailwindClasses.copyButton}
+                    key={w.id}
                     onClick={() => {
-                        const linkInput = document.getElementById('creatorLinkInput');
-                        linkInput.select();
-                        document.execCommand('copy');
+                      setWindowId(w.id);
+                      window.history.pushState({}, '', `?windowId=${w.id}`);
                     }}
+                    className="w-full text-left p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors duration-200 shadow-sm"
                   >
-                    Copy Link
+                    <div className="text-gray-800 font-semibold">{w.creatorName}</div>
+                    <div className="text-gray-500 text-sm">{w.responsesCount} teammate response(s)</div>
                   </button>
-                </div>
-                <button className={tailwindClasses.buttonSecondary} onClick={handleCreateNewWindow}>
-                  Create Another Window
-                </button>
+                ))}
               </div>
+            ) : (
+              <p className="mt-6 text-gray-500">No Johari Windows have been created yet.</p>
             )}
+            <button className={tailwindClasses.buttonSecondary} onClick={() => signOut(auth)}>Sign Out</button>
           </div>
         );
-      case 'submitted':
-        const handleUpdateFeedback = () => setAppState('feedback');
+      } else {
         return (
           <div className={tailwindClasses.card}>
-            <h1 className={tailwindClasses.heading}>Thank you for your feedback!</h1>
-            <p className={tailwindClasses.subheading}>Your selections have been successfully submitted.</p>
+            {renderWindowDisplay()}
             <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 justify-center">
-              <button
-                className={tailwindClasses.buttonSecondary}
-                onClick={handleUpdateFeedback}
-              >
-                Update My Feedback
-              </button>
               <button
                 className={tailwindClasses.buttonPrimary}
                 onClick={handleCreateNewWindow}
               >
-                Create My Own Window
+                Back to Dashboard
               </button>
             </div>
           </div>
         );
-      default:
-        return null;
+      }
     }
+    
+    // Creator flow
+    if (!windowId) {
+      return (
+        <div className={tailwindClasses.card}>
+          {selfSelections.length === 0 ? (
+            <>
+              <h1 className={tailwindClasses.heading}>Discover Your Johari Window</h1>
+              <p className={tailwindClasses.subheading}>Enter your name and select the five adjectives you feel best describe you.</p>
+              <input
+                type="text"
+                placeholder="Enter your name"
+                className={tailwindClasses.input}
+                value={creatorName}
+                onChange={(e) => setCreatorName(e.target.value)}
+              />
+              {renderAdjectiveSelector('self')}
+              <button
+                className={tailwindClasses.buttonPrimary}
+                onClick={handleCreateOrUpdateWindow}
+                disabled={creatorName.trim() === '' || selfSelections.length === 0}
+              >
+                Create My Window
+              </button>
+            </>
+          ) : (
+            <>
+              <h1 className={tailwindClasses.heading}>Your window is ready!</h1>
+              <p className={tailwindClasses.subheading}>
+                Share this link with your teammates to get feedback!
+              </p>
+              <div className="flex flex-col items-center justify-center space-y-4 w-full">
+                <input
+                  type="text"
+                  readOnly
+                  value={`${window.location.origin}${window.location.pathname}?windowId=${windowId}`}
+                  className={tailwindClasses.input}
+                  onClick={(e) => e.target.select()}
+                />
+                <button
+                  className={copyButtonText === "Copied!" ? tailwindClasses.copyButtonFeedback : tailwindClasses.copyButton}
+                  onClick={handleCopyLink}
+                >
+                  {copyButtonText}
+                </button>
+              </div>
+              <button className={tailwindClasses.buttonSecondary} onClick={handleCreateNewWindow}>
+                Create Another Window
+              </button>
+            </>
+          )}
+        </div>
+      );
+    }
+    
+    // Feedback provider or Creator viewing
+    if (windowData) {
+      const isCreator = windowData.creatorId === userId;
+      return (
+        <div className={tailwindClasses.card}>
+          {isCreator ? (
+            <>
+              {renderWindowDisplay()}
+              <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 justify-center">
+                <button
+                  className={tailwindClasses.buttonSecondary}
+                  onClick={() => {
+                    setSelfSelections(windowData.selfSelections);
+                    setWindowId(windowData.id);
+                  }}
+                >
+                  Edit My Selections
+                </button>
+                <button
+                  className={tailwindClasses.buttonPrimary}
+                  onClick={handleCreateNewWindow}
+                >
+                  Create Another Window
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h1 className={tailwindClasses.heading}>Give Feedback to {windowData.creatorName}</h1>
+              <p className={tailwindClasses.subheading}>Select the five adjectives you feel best describe them.</p>
+              {renderAdjectiveSelector('feedback')}
+              <button
+                className={tailwindClasses.buttonPrimary}
+                onClick={handleSubmitFeedback}
+                disabled={feedbackSelections.length === 0}
+              >
+                Submit Feedback
+              </button>
+              <button
+                className={tailwindClasses.buttonSecondary}
+                onClick={handleCreateNewWindow}
+              >
+                Create My Own Window
+              </button>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    return null; // Should not be reached
   };
 
   return (
-    <FirebaseContext.Provider value={{ db }}>
-      <HelpButton onClick={() => setShowHelp(true)} />
-      <HelpModal show={showHelp} onClose={() => setShowHelp(false)} />
-      <div className={tailwindClasses.container}>
-        {renderContent()}
-
-        {/* New button to toggle the debug panel */}
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40">
-          <button
-            onClick={() => setShowDebugPanel(!showDebugPanel)}
-            className="text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors duration-200"
-          >
-            {showDebugPanel ? 'Hide Debug Log' : 'Show Debug Log'}
-          </button>
+    <div className={tailwindClasses.container}>
+      {renderContent()}
+      {snackbarMessage && (
+        <div className={`${tailwindClasses.snackbar} ${snackbarMessage.type === 'error' ? tailwindClasses.snackbarError : ''}`}>
+          {snackbarMessage.message}
         </div>
-
-        {/* Conditionally render the debug panel based on state */}
-        {showDebugPanel && (
-          <div className={tailwindClasses.debugPanel}>
-            <h3 className={tailwindClasses.debugTitle}>Debug Log</h3>
-            <pre className={tailwindClasses.debugLog}>
-              {JSON.stringify(debugInfo, null, 2)}
-            </pre>
-          </div>
-        )}
-        
-        {snackbarMessage && (
-            <div className={`${tailwindClasses.snackbar} ${snackbarMessage.type === 'error' ? tailwindClasses.snackbarError : ''}`}>
-                {snackbarMessage.message}
-            </div>
-        )}
-      </div>
-    </FirebaseContext.Provider>
+      )}
+    </div>
   );
 }
