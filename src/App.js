@@ -128,6 +128,14 @@ const HelpModal = ({ show, onClose }) => {
   );
 };
 
+// New component for the loading state with a spinner
+const LoadingScreen = () => (
+    <div className="fixed inset-0 bg-gray-50 flex flex-col items-center justify-center p-4">
+        <div className="animate-spin rounded-full h-24 w-24 border-t-4 border-b-4 border-blue-500 mb-6"></div>
+        <h1 className="text-3xl font-bold text-gray-800">Initializing App...</h1>
+        <p className="text-lg text-gray-600 mt-2">Please wait while we connect to the database.</p>
+    </div>
+);
 
 // Component for the welcome page with name input
 const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) => {
@@ -565,6 +573,7 @@ export default function App() {
   const [debugInfo, setDebugInfo] = useState({});
   const [snackbarMessage, setSnackbarMessage] = useState(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false); // New state for toggling the debug panel
   const [initialized, setInitialized] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
@@ -573,7 +582,7 @@ export default function App() {
     setWindowId(null);
     setAppState('home');
     setWindowData(null);
-    setCreatorName(''); // New line added here to clear the name field
+    setCreatorName('');
   };
 
   const handleEditSelections = () => {
@@ -786,23 +795,17 @@ useEffect(() => {
 
 
   const renderContent = () => {
+    // Show a loading screen if the app is not ready
+    if (!isAppReady) {
+      return <LoadingScreen />;
+    }
+
     if (appError) {
       return (
         <div className={tailwindClasses.card}>
           <h1 className={tailwindClasses.heading}>Application Error</h1>
           <p className={`${tailwindClasses.subheading} text-red-500 font-semibold`}>
             {appError}
-          </p>
-        </div>
-      );
-    }
-
-    if (!isAppReady) {
-      return (
-        <div className={tailwindClasses.card}>
-          <h1 className={tailwindClasses.heading}>Loading...</h1>
-          <p className={tailwindClasses.subheading}>
-            Initializing application. Please wait.
           </p>
         </div>
       );
@@ -990,12 +993,27 @@ useEffect(() => {
       <HelpModal show={showHelp} onClose={() => setShowHelp(false)} />
       <div className={tailwindClasses.container}>
         {renderContent()}
-        <div className={tailwindClasses.debugPanel}>
-          <h3 className={tailwindClasses.debugTitle}>Debug Log</h3>
-          <pre className={tailwindClasses.debugLog}>
-            {JSON.stringify(debugInfo, null, 2)}
-          </pre>
+
+        {/* New button to toggle the debug panel */}
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40">
+          <button
+            onClick={() => setShowDebugPanel(!showDebugPanel)}
+            className="text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors duration-200"
+          >
+            {showDebugPanel ? 'Hide Debug Log' : 'Show Debug Log'}
+          </button>
         </div>
+
+        {/* Conditionally render the debug panel based on state */}
+        {showDebugPanel && (
+          <div className={tailwindClasses.debugPanel}>
+            <h3 className={tailwindClasses.debugTitle}>Debug Log</h3>
+            <pre className={tailwindClasses.debugLog}>
+              {JSON.stringify(debugInfo, null, 2)}
+            </pre>
+          </div>
+        )}
+        
         {snackbarMessage && (
             <div className={`${tailwindClasses.snackbar} ${snackbarMessage.type === 'error' ? tailwindClasses.snackbarError : ''}`}>
                 {snackbarMessage.message}
