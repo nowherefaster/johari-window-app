@@ -50,7 +50,6 @@ function appReducer(state, action) {
       return {
         ...state,
         userId: action.payload,
-        isLoading: false,
       };
     case 'SET_LOADING':
       return {
@@ -77,32 +76,32 @@ function App() {
 
   // Effect for Firebase authentication and data listener
   useEffect(() => {
-    const initAuthAndData = async () => {
-      try {
-        let user;
-        if (initialAuthToken) {
-          // Attempt to sign in with the provided custom token
-          const userCredential = await signInWithCustomToken(auth, initialAuthToken);
-          user = userCredential.user;
-        } else {
-          // If no token, sign in anonymously
-          const userCredential = await signInAnonymously(auth);
-          user = userCredential.user;
-        }
-
+    // onAuthStateChanged is the most reliable way to handle auth state changes
+    const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        // User is signed in. Set the user ID and listen for data.
         dispatch({ type: 'SET_USER_ID', payload: user.uid });
         startDataListener(user.uid);
-      } catch (error) {
-        console.error('Authentication failed:', error);
-        dispatch({ type: 'SET_ERROR', payload: 'Authentication failed. Please check your Firebase setup.' });
+      } else {
+        // No user is signed in. Attempt to sign in.
+        try {
+          if (initialAuthToken) {
+            await signInWithCustomToken(auth, initialAuthToken);
+          } else {
+            await signInAnonymously(auth);
+          }
+        } catch (error) {
+          console.error('Authentication failed:', error);
+          dispatch({ type: 'SET_ERROR', payload: 'Authentication failed. Please check your Firebase setup.' });
+        }
       }
-    };
+    });
 
     const startDataListener = (userId) => {
       const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'johari');
-
+      
       // Set up a real-time listener for the document
-      const unsub = onSnapshot(
+      const unsubscribeSnapshot = onSnapshot(
         docRef,
         (docSnapshot) => {
           if (docSnapshot.exists()) {
@@ -129,19 +128,12 @@ function App() {
       );
 
       // Return the unsubscribe function for cleanup
-      return unsub;
+      return unsubscribeSnapshot;
     };
-
-    // Listen for auth state changes and start the process
-    const unsubAuth = auth.onAuthStateChanged((user) => {
-      if (!user) {
-        initAuthAndData();
-      }
-    });
 
     return () => {
       // Clean up the auth state listener
-      unsubAuth();
+      unsubscribeAuth();
     };
   }, []);
 
