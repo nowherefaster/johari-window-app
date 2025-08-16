@@ -1,359 +1,364 @@
 import React, { useEffect, useReducer, useState } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { getAuth, signInWithCustomToken, signInAnonymously } from 'firebase/auth';
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
-// --- Firebase Configuration and Initialization ---
-// These variables are automatically provided by the Canvas environment.
-// DO NOT edit them.
+// Ensure the provided Firebase variables are used, or fallback for local testing.
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-// Initialize Firebase services
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
-
-// --- State Management with useReducer ---
+// The central state management for the application.
 const initialState = {
   creatorTraits: [],
   feedbackTraits: [],
   isLoading: true,
+  isSaving: false,
   error: null,
   userId: null,
 };
 
+// Reducer function to handle state updates based on dispatched actions.
 function appReducer(state, action) {
   switch (action.type) {
-    case 'SET_DATA':
+    case 'SET_TRAITS':
       return {
         ...state,
-        creatorTraits: action.payload.creatorTraits || [],
-        feedbackTraits: action.payload.feedbackTraits || [],
+        creatorTraits: action.payload.creatorTraits,
+        feedbackTraits: action.payload.feedbackTraits,
         isLoading: false,
         error: null,
-      };
-    case 'ADD_TRAIT':
-      const { trait, type } = action.payload;
-      return {
-        ...state,
-        [type]: [...state[type], trait],
-      };
-    case 'REMOVE_TRAIT':
-      const { trait: traitToRemove, type: typeToRemove } = action.payload;
-      return {
-        ...state,
-        [typeToRemove]: state[typeToRemove].filter(t => t !== traitToRemove),
       };
     case 'SET_USER_ID':
       return {
         ...state,
         userId: action.payload,
-        isLoading: false, // Set loading to false once the userId is confirmed.
-      };
-    case 'SET_LOADING':
-      return {
-        ...state,
-        isLoading: action.payload,
-      };
-    case 'SET_ERROR':
-      return {
-        ...state,
-        error: action.payload,
         isLoading: false,
       };
+    case 'SET_LOADING':
+      return { ...state, isLoading: action.payload };
+    case 'SET_SAVING':
+      return { ...state, isSaving: action.payload };
+    case 'SET_ERROR':
+      return { ...state, error: action.payload, isLoading: false, isSaving: false };
     default:
       throw new Error(`Unhandled action type: ${action.type}`);
   }
 }
 
-// --- Main App Component ---
-function App() {
+// Main App component
+const App = () => {
+  // Use useReducer to manage the entire application state
   const [state, dispatch] = useReducer(appReducer, initialState);
-  const [newCreatorTrait, setNewCreatorTrait] = useState('');
-  const [newFeedbackTrait, setNewFeedbackTrait] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
+  const { creatorTraits, feedbackTraits, isLoading, isSaving, error, userId } = state;
+  const [newTrait, setNewTrait] = useState('');
+  
+  // Firebase instances
+  const [db, setDb] = useState(null);
+  const [auth, setAuth] = useState(null);
 
-  // Effect for Firebase authentication and data listener
+  // useEffect for Firebase Initialization and Authentication.
+  // This runs once on mount to establish the correct auth flow.
   useEffect(() => {
-    let unsubscribeSnapshot = () => {};
+    let unsubscribe = () => {};
 
-    // Use onAuthStateChanged as the single source of truth for the auth state.
-    const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
-      // Set loading to true while we're handling the auth state.
-      dispatch({ type: 'SET_LOADING', payload: true });
+    const initializeFirebase = async () => {
+      try {
+        const app = initializeApp(firebaseConfig);
+        const authInstance = getAuth(app);
+        const dbInstance = getFirestore(app);
 
-      if (user) {
-        // User is signed in. Set the user ID and listen for data.
-        dispatch({ type: 'SET_USER_ID', payload: user.uid });
-        // Clean up any existing listener before creating a new one.
-        unsubscribeSnapshot();
-        startDataListener(user.uid);
-      } else {
-        // No user is signed in. Attempt to sign in.
-        try {
-          if (initialAuthToken) {
-            await signInWithCustomToken(auth, initialAuthToken);
+        setAuth(authInstance);
+        setDb(dbInstance);
+
+        // This listener ensures we only proceed once auth state is confirmed.
+        unsubscribe = onAuthStateChanged(authInstance, async (user) => {
+          if (user) {
+            dispatch({ type: 'SET_USER_ID', payload: user.uid });
           } else {
-            await signInAnonymously(auth);
+            // If no user, sign in anonymously.
+            await signInAnonymously(authInstance);
           }
-        } catch (error) {
-          console.error('Authentication failed:', error);
-          dispatch({ type: 'SET_ERROR', payload: 'Authentication failed. Please check your Firebase setup.' });
-        }
+        });
+      } catch (e) {
+        console.error("Firebase initialization or auth error:", e);
+        dispatch({ type: 'SET_ERROR', payload: `Firebase initialization failed: ${e.message}` });
       }
-    });
+    };
 
-    const startDataListener = (userId) => {
-      const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'johari');
-      
-      // Set up a real-time listener for the document
-      unsubscribeSnapshot = onSnapshot(
-        docRef,
-        (docSnapshot) => {
-          if (docSnapshot.exists()) {
-            // Data exists, update the state
-            dispatch({ type: 'SET_DATA', payload: docSnapshot.data() });
-            console.log('Johari data loaded successfully from Firestore.');
+    initializeFirebase();
+
+    // Clean up the auth listener when the component unmounts.
+    return () => unsubscribe();
+  }, []); // Empty dependency array ensures this runs only once.
+
+  // useEffect to set up the Firestore listener.
+  // This listener is only attached once the userId is available.
+  useEffect(() => {
+    let unsubscribe = () => {};
+
+    if (db && userId) {
+      const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
+
+      // Listen for real-time updates to the user's document.
+      unsubscribe = onSnapshot(
+        userDocRef,
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            dispatch({
+              type: 'SET_TRAITS',
+              payload: {
+                creatorTraits: data.creatorTraits || [],
+                feedbackTraits: data.feedbackTraits || [],
+              },
+            });
           } else {
-            // Document does not exist, create it with initial state
-            console.log('Johari document not found, creating a new one.');
-            setDoc(docRef, { creatorTraits: [], feedbackTraits: [] })
-              .then(() => {
-                dispatch({ type: 'SET_DATA', payload: { creatorTraits: [], feedbackTraits: [] } });
-              })
-              .catch(error => {
-                console.error('Error creating initial document:', error);
-                dispatch({ type: 'SET_ERROR', payload: 'Error creating initial document.' });
-              });
+            // Document doesn't exist, initialize with empty arrays.
+            dispatch({
+              type: 'SET_TRAITS',
+              payload: {
+                creatorTraits: [],
+                feedbackTraits: [],
+              },
+            });
           }
         },
         (error) => {
-          console.error('Error fetching Johari document from Firestore:', error);
-          dispatch({ type: 'SET_ERROR', payload: 'Failed to load Johari data.' });
+          console.error("Firestore onSnapshot error:", error);
+          dispatch({ type: 'SET_ERROR', payload: `Failed to fetch data: ${error.message}` });
         }
       );
-    };
+    }
 
-    return () => {
-      // Clean up both listeners on component unmount
-      unsubscribeAuth();
-      unsubscribeSnapshot();
-    };
-  }, []);
+    // Clean up the Firestore listener when the component unmounts or userId changes.
+    return () => unsubscribe();
+  }, [db, userId, appId]); // Depend on db and userId to re-attach listener.
 
-  // --- Functions to Interact with Firestore and State ---
-  const saveToFirestore = async (updatedData) => {
-    if (!state.userId) {
-      console.warn('User not authenticated, cannot save to Firestore.');
+  // Updates a trait's state and saves to Firestore.
+  const updateTraitState = async (trait, field, value) => {
+    if (!db || !userId) {
+      console.error("Firestore is not initialized or user is not authenticated.");
+      dispatch({ type: 'SET_ERROR', payload: 'Application is not ready. Please try again.' });
       return;
     }
-    const docRef = doc(db, 'artifacts', appId, 'users', state.userId, 'data', 'johari');
-    setIsSaving(true);
+    
+    dispatch({ type: 'SET_SAVING', payload: true });
     try {
-      await setDoc(docRef, updatedData, { merge: true });
-      console.log('Trait change saved to Firestore.');
-    } catch (error) {
-      console.error('Error saving trait change:', error);
-      dispatch({ type: 'SET_ERROR', payload: 'Failed to save changes.' });
+      const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
+      const newTraits = field === 'creator'
+        ? creatorTraits.map(t => t.text === trait.text ? { ...t, [value]: !t[value] } : t)
+        : feedbackTraits.map(t => t.text === trait.text ? { ...t, [value]: !t[value] } : t);
+
+      await setDoc(userDocRef, {
+        creatorTraits: field === 'creator' ? newTraits : creatorTraits,
+        feedbackTraits: field === 'creator' ? feedbackTraits : newTraits,
+      }, { merge: true });
+    } catch (e) {
+      console.error("Error updating trait:", e);
+      dispatch({ type: 'SET_ERROR', payload: `Failed to save trait: ${e.message}` });
     } finally {
-      setIsSaving(false);
+      dispatch({ type: 'SET_SAVING', payload: false });
     }
   };
 
-  const handleAddTrait = (trait, type) => {
-    if (!trait.trim()) return;
-    const newTrait = trait.trim();
-    const updatedList = [...state[type], newTrait];
-    dispatch({ type: 'ADD_TRAIT', payload: { trait: newTrait, type } });
-    if (type === 'creatorTraits') {
-      setNewCreatorTrait('');
-    } else {
-      setNewFeedbackTrait('');
+  // Handles clicking a trait to toggle it's selected state.
+  const onTraitClick = (trait, field, isFeedback) => {
+    updateTraitState(trait, field, isFeedback ? 'givenFeedback' : 'isSelfSelected');
+  };
+
+  // Adds a new trait to the creator list.
+  const onAddTrait = async () => {
+    if (newTrait.trim() === '') return;
+    if (!db || !userId) {
+      console.error("Firestore is not initialized or user is not authenticated.");
+      dispatch({ type: 'SET_ERROR', payload: 'Application is not ready. Please try again.' });
+      return;
     }
-    saveToFirestore({ [type]: updatedList });
+    
+    dispatch({ type: 'SET_SAVING', payload: true });
+    try {
+      const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
+      const newTraitItem = {
+        text: newTrait.trim(),
+        isSelfSelected: false,
+        givenFeedback: false
+      };
+      
+      const updatedTraits = [...creatorTraits, newTraitItem];
+      await setDoc(userDocRef, {
+        creatorTraits: updatedTraits,
+      }, { merge: true });
+      
+      setNewTrait('');
+    } catch (e) {
+      console.error("Error adding new trait:", e);
+      dispatch({ type: 'SET_ERROR', payload: `Failed to add trait: ${e.message}` });
+    } finally {
+      dispatch({ type: 'SET_SAVING', payload: false });
+    }
   };
 
-  const handleRemoveTrait = (trait, type) => {
-    const updatedList = state[type].filter(t => t !== trait);
-    dispatch({ type: 'REMOVE_TRAIT', payload: { trait, type } });
-    saveToFirestore({ [type]: updatedList });
-  };
-
-  const TraitList = ({ title, traits, type }) => (
-    <div className="bg-gray-800 rounded-xl p-6 shadow-lg h-full">
-      <h2 className="text-xl font-semibold mb-4">{title}</h2>
-      <ul className="list-disc list-inside space-y-2">
-        {traits.length > 0 ? (
-          traits.map((trait, index) => (
-            <li key={index} className="bg-gray-700 p-2 rounded-lg flex items-center justify-between">
-              <span>{trait}</span>
-              <button
-                onClick={() => handleRemoveTrait(trait, type)}
-                className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors duration-200"
-              >
-                Remove
-              </button>
-            </li>
-          ))
-        ) : (
-          <p className="text-gray-400 text-sm">No traits here yet.</p>
-        )}
-      </ul>
+  // A component to display each trait item.
+  const TraitItem = ({ trait, onClick, isSelectable }) => (
+    <div
+      onClick={isSelectable ? onClick : null}
+      className={`
+        p-2 m-1 rounded-lg transition-all duration-200
+        ${isSelectable ? 'cursor-pointer hover:scale-105' : ''}
+        ${isSelectable && trait.isSelfSelected ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-200 text-gray-800'}
+        ${isSelectable && trait.givenFeedback ? 'bg-green-600 text-white shadow-md' : ''}
+      `}
+    >
+      {trait.text}
     </div>
   );
 
-  // --- Calculations for Johari Window Quadrants ---
-  const allTraits = new Set([...state.creatorTraits, ...state.feedbackTraits]);
-  const creatorSet = new Set(state.creatorTraits);
-  const feedbackSet = new Set(state.feedbackTraits);
-
-  const arenaTraits = [...creatorSet].filter(t => feedbackSet.has(t));
-  const facadeTraits = [...creatorSet].filter(t => !feedbackSet.has(t));
-  const blindSpotTraits = [...feedbackSet].filter(t => !creatorSet.has(t));
-  const unknownTraits = [...allTraits].filter(t => !creatorSet.has(t) && !feedbackSet.has(t));
-
-  // --- UI Rendering ---
-  if (state.isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
-        <p className="text-xl animate-pulse">Loading Johari Window...</p>
+  // A component for each of the four quadrants.
+  const Quadrant = ({ title, traits }) => (
+    <div className="bg-white rounded-2xl shadow-lg p-6 flex flex-col items-center border-t-4 border-b-4 border-gray-200 min-h-[250px] transition-transform duration-300 hover:scale-105">
+      <h3 className="text-xl font-bold mb-4 text-center">{title}</h3>
+      <div className="flex flex-wrap justify-center items-center h-full">
+        {traits.length > 0 ? (
+          traits.map((trait, index) => (
+            <div
+              key={index}
+              className="bg-gray-100 rounded-full px-4 py-2 m-1 text-sm text-gray-700 font-medium whitespace-nowrap"
+            >
+              {trait.text}
+            </div>
+          ))
+        ) : (
+          <p className="text-gray-400 text-center italic">No traits in this quadrant yet.</p>
+        )}
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (state.error) {
+  // Derive the traits for each quadrant.
+  const knownToSelf = creatorTraits.filter(t => t.isSelfSelected);
+  const knownToOthers = feedbackTraits.filter(t => t.givenFeedback);
+
+  const openArea = creatorTraits.filter(t => knownToSelf.includes(t) && knownToOthers.some(ft => ft.text === t.text));
+  const blindSpot = knownToOthers.filter(t => !knownToSelf.some(st => st.text === t.text));
+  const hiddenArea = knownToSelf.filter(t => !knownToOthers.some(ft => ft.text === t.text));
+  const unknownArea = creatorTraits.filter(t => !knownToSelf.includes(t) && !knownToOthers.some(ft => ft.text === t.text));
+
+  // Loading and Error UI
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-red-900 text-white p-4">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Error!</h1>
-          <p>{state.error}</p>
-          <p className="mt-4 text-sm opacity-75">Check the console for more details.</p>
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
+        <div className="text-center text-gray-600">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-t-blue-500 border-gray-200 mx-auto mb-4"></div>
+          <p className="text-lg">Loading Johari Window...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white font-sans p-6">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-4xl font-bold mb-8 text-center">Your Johari Window</h1>
-        <div className="bg-gray-800 rounded-xl p-6 shadow-lg mb-6">
-          <h2 className="text-xl font-semibold mb-2">Your User ID</h2>
-          <p className="font-mono text-sm break-all bg-gray-700 p-2 rounded-lg">{state.userId}</p>
-        </div>
+    <div className="font-sans antialiased text-gray-900 bg-gray-50 py-12 px-4 min-h-screen">
+      <div className="max-w-7xl mx-auto">
+        <header className="text-center mb-12">
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-2">Johari Window</h1>
+          <p className="text-lg text-gray-600">Explore self-perception and how others see you.</p>
+        </header>
 
-        <div className="bg-gray-800 rounded-xl p-6 shadow-lg mb-6 grid md:grid-cols-2 gap-6">
-          <div>
-            <h2 className="text-xl font-semibold mb-2">Traits I Believe I Possess</h2>
-            <p className="text-sm text-gray-400 mb-4">Add your self-perceived traits here.</p>
-            <div className="flex space-x-4">
+        {/* Display Error Message */}
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl relative mb-6" role="alert">
+            <strong className="font-bold">Error!</strong>
+            <span className="block sm:inline ml-2">{error}</span>
+          </div>
+        )}
+
+        {/* User ID display - crucial for collaboration */}
+        {userId && (
+          <div className="mb-6 p-4 bg-gray-100 rounded-xl text-sm text-gray-600 text-center break-all">
+            <span className="font-semibold">Your User ID:</span> {userId}
+          </div>
+        )}
+
+        <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {/* Creator Input Section */}
+          <section className="bg-white rounded-2xl shadow-xl p-6 lg:col-span-1">
+            <h2 className="text-2xl font-bold mb-4 text-center">Your Traits</h2>
+            <p className="text-gray-600 mb-4 text-center">
+              Select the traits that best describe you.
+            </p>
+            <div className="flex flex-wrap justify-center mb-4">
+              {creatorTraits.length > 0 ? (
+                creatorTraits.map((trait, index) => (
+                  <TraitItem
+                    key={index}
+                    trait={{ ...trait, givenFeedback: false }} // Always false for the creator's view
+                    onClick={() => onTraitClick(trait, 'creator', false)}
+                    isSelectable={true}
+                  />
+                ))
+              ) : (
+                <p className="text-gray-400 italic">Add some traits below!</p>
+              )}
+            </div>
+            <div className="mt-6 flex items-center space-x-2">
               <input
                 type="text"
-                className="flex-grow rounded-lg p-3 bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., 'Creative'"
-                value={newCreatorTrait}
-                onChange={(e) => setNewCreatorTrait(e.target.value)}
+                value={newTrait}
+                onChange={(e) => setNewTrait(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    onAddTrait();
+                  }
+                }}
+                placeholder="Add a new trait..."
+                className="flex-1 p-3 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
               />
               <button
-                onClick={() => handleAddTrait(newCreatorTrait, 'creatorTraits')}
-                className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg shadow-md transition-colors duration-200"
+                onClick={onAddTrait}
+                disabled={isSaving}
+                className="bg-indigo-600 text-white px-6 py-3 rounded-full font-semibold hover:bg-indigo-700 transition-colors shadow-md disabled:bg-indigo-400 disabled:cursor-not-allowed"
               >
-                Add
+                {isSaving ? 'Adding...' : 'Add'}
               </button>
             </div>
-          </div>
-          <div>
-            <h2 className="text-xl font-semibold mb-2">Feedback from Others</h2>
-            <p className="text-sm text-gray-400 mb-4">Add feedback traits you've received here.</p>
-            <div className="flex space-x-4">
-              <input
-                type="text"
-                className="flex-grow rounded-lg p-3 bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., 'Good listener'"
-                value={newFeedbackTrait}
-                onChange={(e) => setNewFeedbackTrait(e.target.value)}
-              />
-              <button
-                onClick={() => handleAddTrait(newFeedbackTrait, 'feedbackTraits')}
-                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md transition-colors duration-200"
-              >
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
+          </section>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          <TraitList
-            title="Traits I Believe I Possess"
-            traits={state.creatorTraits}
-            type="creatorTraits"
-          />
-          <TraitList
-            title="Feedback from Others"
-            traits={state.feedbackTraits}
-            type="feedbackTraits"
-          />
-        </div>
+          {/* Feedback Section */}
+          <section className="bg-white rounded-2xl shadow-xl p-6 lg:col-span-1">
+            <h2 className="text-2xl font-bold mb-4 text-center">Feedback from Others</h2>
+            <p className="text-gray-600 mb-4 text-center">
+              Traits your friends or teammates have selected for you.
+            </p>
+            <div className="flex flex-wrap justify-center">
+              {feedbackTraits.length > 0 ? (
+                feedbackTraits.map((trait, index) => (
+                  <TraitItem
+                    key={index}
+                    trait={{ ...trait, isSelfSelected: false }} // Not selectable by self
+                    onClick={() => onTraitClick(trait, 'feedback', true)}
+                    isSelectable={true}
+                  />
+                ))
+              ) : (
+                <p className="text-gray-400 italic">No feedback received yet.</p>
+              )}
+            </div>
+          </section>
 
-        <div className="mt-8">
-          <h2 className="text-3xl font-bold mb-4 text-center">Your Johari Window Quadrants</h2>
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-gray-800 rounded-xl p-6 shadow-lg h-full">
-              <h3 className="text-xl font-semibold mb-4 text-green-400">Arena (Known to Self, Known to Others)</h3>
-              <ul className="list-disc list-inside space-y-2">
-                {arenaTraits.length > 0 ? (
-                  arenaTraits.map((trait, index) => (
-                    <li key={index} className="bg-gray-700 p-2 rounded-lg">{trait}</li>
-                  ))
-                ) : (
-                  <p className="text-gray-400 text-sm">No shared traits yet.</p>
-                )}
-              </ul>
+          {/* Johari Window Quadrants */}
+          <section className="bg-gray-100 rounded-2xl shadow-xl p-6 lg:col-span-1 grid grid-cols-1 gap-6">
+            <h2 className="text-2xl font-bold mb-4 text-center">The Johari Window</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <Quadrant title="Open Area" traits={openArea} />
+              <Quadrant title="Blind Spot" traits={blindSpot} />
+              <Quadrant title="Hidden Area" traits={hiddenArea} />
+              <Quadrant title="Unknown Area" traits={unknownArea} />
             </div>
-            <div className="bg-gray-800 rounded-xl p-6 shadow-lg h-full">
-              <h3 className="text-xl font-semibold mb-4 text-blue-400">Facade (Known to Self, Unknown to Others)</h3>
-              <ul className="list-disc list-inside space-y-2">
-                {facadeTraits.length > 0 ? (
-                  facadeTraits.map((trait, index) => (
-                    <li key={index} className="bg-gray-700 p-2 rounded-lg">{trait}</li>
-                  ))
-                ) : (
-                  <p className="text-gray-400 text-sm">No private traits yet.</p>
-                )}
-              </ul>
-            </div>
-            <div className="bg-gray-800 rounded-xl p-6 shadow-lg h-full">
-              <h3 className="text-xl font-semibold mb-4 text-yellow-400">Blind Spot (Unknown to Self, Known to Others)</h3>
-              <ul className="list-disc list-inside space-y-2">
-                {blindSpotTraits.length > 0 ? (
-                  blindSpotTraits.map((trait, index) => (
-                    <li key={index} className="bg-gray-700 p-2 rounded-lg">{trait}</li>
-                  ))
-                ) : (
-                  <p className="text-gray-400 text-sm">No blind spots yet.</p>
-                )}
-              </ul>
-            </div>
-            <div className="bg-gray-800 rounded-xl p-6 shadow-lg h-full">
-              <h3 className="text-xl font-semibold mb-4 text-red-400">Unknown (Unknown to Self, Unknown to Others)</h3>
-              <ul className="list-disc list-inside space-y-2">
-                {unknownTraits.length > 0 ? (
-                  unknownTraits.map((trait, index) => (
-                    <li key={index} className="bg-gray-700 p-2 rounded-lg">{trait}</li>
-                  ))
-                ) : (
-                  <p className="text-gray-400 text-sm">No unknown traits yet.</p>
-                )}
-              </ul>
-            </div>
-          </div>
-        </div>
+          </section>
+        </main>
       </div>
     </div>
   );
-}
+};
 
 export default App;
