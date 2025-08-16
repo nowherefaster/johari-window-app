@@ -565,70 +565,18 @@ const AdminDashboard = ({ setAppState, setWindowId, allWindowsData, handleSignOu
   );
 };
 
-// Main App component
-export default function App() {
-  const [appState, setAppState] = useState('home');
-  const [windowId, setWindowId] = useState(null);
-  const [creatorName, setCreatorName] = useState('');
-  const [windowData, setWindowData] = useState(null);
-  const [allWindowsData, setAllWindowsData] = useState([]);
+// Custom Hook for Firebase Initialization and Authentication
+const useFirebase = () => {
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [adminUids, setAdminUids] = useState([]);
   const [isAppReady, setIsAppReady] = useState(false);
   const [appError, setAppError] = useState(null);
   const [appId, setAppId] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
-  const [snackbarMessage, setSnackbarMessage] = useState(null);
-  const [showHelp, setShowHelp] = useState(false);
-  const [showDebugPanel, setShowDebugPanel] = useState(false); // New state for toggling the debug panel
   const [initialized, setInitialized] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-
-  const handleCreateNewWindow = () => {
-    setWindowId(null);
-    setAppState('home');
-    setWindowData(null);
-    setCreatorName('');
-  };
-
-  const handleEditSelections = () => {
-    setAppState('creatorAdjectiveSelection');
-  };
-
-  const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-      setAppState('home');
-      setWindowId(null);
-      setIsAdmin(false);
-      setUserId(null);
-      setAllWindowsData([]);
-    } catch (e) {
-      console.error("Sign-out error: ", e);
-      setSnackbarMessage({ type: 'error', message: "Sign out failed. Please try again." });
-    }
-  };
-
-  useEffect(() => {
-    if (snackbarMessage) {
-      const timer = setTimeout(() => {
-        setSnackbarMessage(null);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [snackbarMessage]);
-
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const id = urlParams.get('windowId');
-    if (id) {
-      setWindowId(id);
-    }
-  }, []);
 
   // Effect to initialize Firebase and auth listener
   useEffect(() => {
@@ -637,7 +585,7 @@ export default function App() {
 
     const initializeFirebase = async () => {
       try {
-        const firebaseConfigString = typeof process.env.REACT_APP_FIREBASE_CONFIG !== 'undefined' ? process.env.REACT_APP_FIREBASE_CONFIG : null;
+        const firebaseConfigString = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
         const appIdString = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
         if (!firebaseConfigString) {
@@ -702,34 +650,39 @@ export default function App() {
     initializeFirebase();
   }, [initialized]);
 
-// Effect to fetch admin UIDs and determine admin status
-useEffect(() => {
-  if (!db || !appId || !isAuthenticated) return;
+  // Effect to fetch admin UIDs and determine admin status
+  useEffect(() => {
+    if (!db || !appId || !isAuthenticated) return;
+  
+    const fetchAdminUids = async () => {
+        try {
+            const adminsRef = collection(db, `artifacts/${appId}/public/data/admins`);
+            const q = query(adminsRef);
+            const querySnapshot = await getDocs(q);
+            const uids = querySnapshot.docs.map(doc => doc.id);
+            setIsAdmin(uids.includes(userId));
+            setIsAppReady(true);
+            setDebugInfo(prev => ({...prev, message: "Admin UIDs fetched.", adminUids: uids}));
+        } catch (e) {
+            console.error("Error fetching admin UIDs:", e);
+            setDebugInfo(prev => ({...prev, error: e.message, message: "Failed to fetch admin UIDs. App will function in non-admin mode."}));
+            setIsAdmin(false);
+            setIsAppReady(true);
+        }
+    };
+  
+    fetchAdminUids();
+  }, [db, appId, isAuthenticated, userId]);
 
-  const fetchAdminUids = async () => {
-      try {
-          const adminsRef = collection(db, `artifacts/${appId}/public/data/admins`);
-          const q = query(adminsRef);
-          const querySnapshot = await getDocs(q);
-          const uids = querySnapshot.docs.map(doc => doc.id);
-          setAdminUids(uids);
-          setIsAdmin(uids.includes(userId));
-          setIsAppReady(true);
-          setDebugInfo(prev => ({...prev, message: "Admin UIDs fetched.", adminUids: uids}));
-      } catch (e) {
-          console.error("Error fetching admin UIDs:", e);
-          setDebugInfo(prev => ({...prev, error: e.message, message: "Failed to fetch admin UIDs. App will function in non-admin mode."}));
-          setIsAdmin(false);
-          setIsAppReady(true);
-      }
-  };
+  return { db, auth, userId, isAdmin, isAppReady, appError, appId, debugInfo, setDebugInfo, setAuth, setDb, setAppId, setIsAdmin, setUserId, setIsAuthenticated, setAppError };
+};
 
-  fetchAdminUids();
-}, [db, appId, isAuthenticated, userId]);
-
+// Custom hook for fetching and managing a single Johari Window's data
+const useJohariData = (db, appId, windowId, userId, isAdmin, setDebugInfo, setAppState) => {
+  const [windowData, setWindowData] = useState(null);
 
   useEffect(() => {
-    if (!db || !windowId || !isAppReady || !appId) return;
+    if (!db || !windowId || !appId) return;
 
     setDebugInfo(prev => ({...prev, message: "onSnapshot listener for window started."}));
 
@@ -738,7 +691,6 @@ useEffect(() => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setWindowData(prevData => ({ ...prevData, creatorName: data.creatorName, selfSelections: data.selfSelections, creatorId: data.creatorId, windowId: docSnap.id }));
-        setCreatorName(data.creatorName);
 
         // Determine app state based on user type and data
         if (isAdmin) {
@@ -750,7 +702,6 @@ useEffect(() => {
         }
         setDebugInfo(prev => ({...prev, message: "Window data received and state updated.", creatorData: data}));
       } else {
-        setAppError("Error: This Johari Window does not exist or you don't have access to it.");
         setAppState('error');
         setDebugInfo(prev => ({...prev, message: "onSnapshot callback fired, but document does not exist."}));
       }
@@ -770,14 +721,20 @@ useEffect(() => {
       unsubWindow();
       unsubFeedback();
     };
-  }, [db, windowId, isAppReady, appId, userId, isAdmin]);
+  }, [db, windowId, appId, userId, isAdmin, setDebugInfo, setAppState]);
 
-  // New useEffect to fetch all windows for the admin dashboard
+  return windowData;
+};
+
+// NEW custom hook for the admin dashboard data
+const useAdminDashboard = (db, appId, isAdmin, isAppReady, setDebugInfo) => {
+  const [allWindowsData, setAllWindowsData] = useState([]);
+  
   useEffect(() => {
     if (!db || !isAppReady || !appId || !isAdmin) return;
-
+  
     setDebugInfo(prev => ({...prev, message: "Admin onSnapshot listener for all windows started."}));
-
+  
     const unsubAllWindows = onSnapshot(collection(db, `artifacts/${appId}/public/data/windows`), async (querySnapshot) => {
       setDebugInfo(prev => ({...prev, message: "Admin onSnapshot callback fired for all windows."}));
       const windows = [];
@@ -792,17 +749,70 @@ useEffect(() => {
         });
       }
       setAllWindowsData(windows);
-      if (appState === 'adminDashboard') {
-        setDebugInfo(prev => ({...prev, message: `Admin dashboard updated with ${windows.length} windows.`}));
-      }
+      setDebugInfo(prev => ({...prev, message: `Admin dashboard updated with ${windows.length} windows.`}));
     });
     
     return () => {
       setDebugInfo(prev => ({...prev, message: "Admin onSnapshot listener unsubscribed."}));
       unsubAllWindows();
     };
-  }, [db, isAppReady, appId, isAdmin, appState, setDebugInfo]);
+  }, [db, isAppReady, appId, isAdmin, setDebugInfo]);
 
+  return allWindowsData;
+}
+
+
+// Main App component
+export default function App() {
+  const [appState, setAppState] = useState('home');
+  const [windowId, setWindowId] = useState(null);
+  const [creatorName, setCreatorName] = useState('');
+  const [snackbarMessage, setSnackbarMessage] = useState(null);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false); // New state for toggling the debug panel
+
+  // Consume state and services from the custom hooks
+  const { db, auth, userId, isAdmin, isAppReady, appError, appId, debugInfo, setDebugInfo } = useFirebase();
+  const windowData = useJohariData(db, appId, windowId, userId, isAdmin, setDebugInfo, setAppState);
+  const allWindowsData = useAdminDashboard(db, appId, isAdmin, isAppReady, setDebugInfo);
+
+  const handleCreateNewWindow = () => {
+    setWindowId(null);
+    setAppState('home');
+    setCreatorName('');
+  };
+
+  const handleEditSelections = () => {
+    setAppState('creatorAdjectiveSelection');
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      setAppState('home');
+      setWindowId(null);
+    } catch (e) {
+      console.error("Sign-out error: ", e);
+      setSnackbarMessage({ type: 'error', message: "Sign out failed. Please try again." });
+    }
+  };
+
+  useEffect(() => {
+    if (snackbarMessage) {
+      const timer = setTimeout(() => {
+        setSnackbarMessage(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [snackbarMessage]);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const id = urlParams.get('windowId');
+    if (id) {
+      setWindowId(id);
+    }
+  }, []);
 
   const renderContent = () => {
     // Show a loading screen if the app is not ready
