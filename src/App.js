@@ -3,9 +3,9 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
-// Ensure the provided Firebase variables are used, or fallback for local testing.
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+// Core Firebase configuration from the environment
+const appId = typeof __app_id !== 'undefined' ? __app_id : null;
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
 // The central state management for the application.
@@ -52,13 +52,13 @@ const App = () => {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const { creatorTraits, feedbackTraits, isLoading, isSaving, error, userId } = state;
   const [newTrait, setNewTrait] = useState('');
-  
+  const [isPanelVisible, setPanelVisible] = useState(false);
+
   // Firebase instances
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
 
   // useEffect for Firebase Initialization and Authentication.
-  // This runs once on mount to establish the correct auth flow.
   useEffect(() => {
     let unsubscribe = () => {};
 
@@ -76,7 +76,7 @@ const App = () => {
           if (user) {
             dispatch({ type: 'SET_USER_ID', payload: user.uid });
           } else {
-            // If no user, sign in anonymously.
+            // Sign in anonymously if no user is found.
             await signInAnonymously(authInstance);
           }
         });
@@ -142,7 +142,7 @@ const App = () => {
       dispatch({ type: 'SET_ERROR', payload: 'Application is not ready. Please try again.' });
       return;
     }
-    
+
     dispatch({ type: 'SET_SAVING', payload: true });
     try {
       const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
@@ -162,7 +162,7 @@ const App = () => {
     }
   };
 
-  // Handles clicking a trait to toggle it's selected state.
+  // Handles clicking a trait to toggle its selected state.
   const onTraitClick = (trait, field, isFeedback) => {
     updateTraitState(trait, field, isFeedback ? 'givenFeedback' : 'isSelfSelected');
   };
@@ -175,7 +175,7 @@ const App = () => {
       dispatch({ type: 'SET_ERROR', payload: 'Application is not ready. Please try again.' });
       return;
     }
-    
+
     dispatch({ type: 'SET_SAVING', payload: true });
     try {
       const userDocRef = doc(db, 'artifacts', appId, 'users', userId);
@@ -184,12 +184,12 @@ const App = () => {
         isSelfSelected: false,
         givenFeedback: false
       };
-      
+
       const updatedTraits = [...creatorTraits, newTraitItem];
       await setDoc(userDocRef, {
         creatorTraits: updatedTraits,
       }, { merge: true });
-      
+
       setNewTrait('');
     } catch (e) {
       console.error("Error adding new trait:", e);
@@ -200,49 +200,48 @@ const App = () => {
   };
 
   // A component to display each trait item.
-  const TraitItem = ({ trait, onClick, isSelectable }) => (
+  const TraitItem = ({ trait, onClick, isSelectable, isFeedback }) => (
     <div
       onClick={isSelectable ? onClick : null}
       className={`
-        p-2 m-1 rounded-lg transition-all duration-200
-        ${isSelectable ? 'cursor-pointer hover:scale-105' : ''}
-        ${isSelectable && trait.isSelfSelected ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-200 text-gray-800'}
-        ${isSelectable && trait.givenFeedback ? 'bg-green-600 text-white shadow-md' : ''}
+        px-4 py-2 m-1 rounded-full text-sm font-medium transition-colors duration-200
+        ${isSelectable ? 'cursor-pointer hover:bg-gray-300' : 'cursor-default'}
+        ${isFeedback && trait.givenFeedback
+          ? 'bg-blue-600 text-white'
+          : !isFeedback && trait.isSelfSelected
+            ? 'bg-indigo-600 text-white'
+            : 'bg-gray-200 text-gray-800'
+        }
       `}
     >
       {trait.text}
     </div>
   );
 
+
   // A component for each of the four quadrants.
   const Quadrant = ({ title, traits }) => (
-    <div className="bg-white rounded-2xl shadow-lg p-6 flex flex-col items-center border-t-4 border-b-4 border-gray-200 min-h-[250px] transition-transform duration-300 hover:scale-105">
-      <h3 className="text-xl font-bold mb-4 text-center">{title}</h3>
-      <div className="flex flex-wrap justify-center items-center h-full">
+    <div className="bg-white rounded-xl shadow-md p-5 min-h-[150px] flex flex-col">
+      <h3 className="text-lg font-semibold mb-2 text-center">{title}</h3>
+      <div className="flex-grow flex flex-wrap justify-center items-center">
         {traits.length > 0 ? (
           traits.map((trait, index) => (
-            <div
-              key={index}
-              className="bg-gray-100 rounded-full px-4 py-2 m-1 text-sm text-gray-700 font-medium whitespace-nowrap"
-            >
+            <div key={index} className="bg-gray-100 rounded-full px-3 py-1 m-1 text-xs text-gray-700 font-medium">
               {trait.text}
             </div>
           ))
         ) : (
-          <p className="text-gray-400 text-center italic">No traits in this quadrant yet.</p>
+          <p className="text-gray-400 text-sm italic">No traits here yet.</p>
         )}
       </div>
     </div>
   );
 
   // Derive the traits for each quadrant.
-  const knownToSelf = creatorTraits.filter(t => t.isSelfSelected);
-  const knownToOthers = feedbackTraits.filter(t => t.givenFeedback);
-
-  const openArea = creatorTraits.filter(t => knownToSelf.includes(t) && knownToOthers.some(ft => ft.text === t.text));
-  const blindSpot = knownToOthers.filter(t => !knownToSelf.some(st => st.text === t.text));
-  const hiddenArea = knownToSelf.filter(t => !knownToOthers.some(ft => ft.text === t.text));
-  const unknownArea = creatorTraits.filter(t => !knownToSelf.includes(t) && !knownToOthers.some(ft => ft.text === t.text));
+  const openArea = creatorTraits.filter(t => t.isSelfSelected && feedbackTraits.some(ft => ft.text === t.text && ft.givenFeedback));
+  const blindSpot = feedbackTraits.filter(ft => ft.givenFeedback && !creatorTraits.some(t => t.text === ft.text && t.isSelfSelected));
+  const hiddenArea = creatorTraits.filter(t => t.isSelfSelected && !feedbackTraits.some(ft => ft.text === t.text && ft.givenFeedback));
+  const unknownArea = creatorTraits.filter(t => !t.isSelfSelected && !feedbackTraits.some(ft => ft.text === t.text));
 
   // Loading and Error UI
   if (isLoading) {
@@ -257,48 +256,57 @@ const App = () => {
   }
 
   return (
-    <div className="font-sans antialiased text-gray-900 bg-gray-50 py-12 px-4 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <header className="text-center mb-12">
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-2">Johari Window</h1>
-          <p className="text-lg text-gray-600">Explore self-perception and how others see you.</p>
+    <div className="font-sans antialiased bg-gray-50 text-gray-800 min-h-screen p-8">
+      <div className="max-w-6xl mx-auto relative">
+        {/* Debug Panel */}
+        <div className="absolute top-0 right-0 p-4">
+          <button
+            onClick={() => setPanelVisible(!isPanelVisible)}
+            className="p-2 rounded-full bg-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-300 transition-colors"
+          >
+            {isPanelVisible ? 'Hide Debug' : 'Show Debug'}
+          </button>
+          {isPanelVisible && (
+            <div className="mt-2 p-4 bg-gray-100 rounded-lg shadow-md max-w-sm">
+              <h4 className="font-bold text-sm mb-2">Debug Info</h4>
+              <p className="text-xs break-all">
+                <strong>User ID:</strong> {userId || 'N/A'}
+              </p>
+              <p className="text-xs mt-1">
+                <strong>Is Saving:</strong> {isSaving ? 'Yes' : 'No'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <header className="text-center mb-10">
+          <h1 className="text-4xl font-extrabold text-gray-900 mb-2">Johari Window</h1>
+          <p className="text-lg text-gray-600">Explore your self-awareness and how others perceive you.</p>
         </header>
 
-        {/* Display Error Message */}
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl relative mb-6" role="alert">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl relative mb-6">
             <strong className="font-bold">Error!</strong>
             <span className="block sm:inline ml-2">{error}</span>
           </div>
         )}
 
-        {/* User ID display - crucial for collaboration */}
-        {userId && (
-          <div className="mb-6 p-4 bg-gray-100 rounded-xl text-sm text-gray-600 text-center break-all">
-            <span className="font-semibold">Your User ID:</span> {userId}
-          </div>
-        )}
-
-        <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {/* Creator Input Section */}
-          <section className="bg-white rounded-2xl shadow-xl p-6 lg:col-span-1">
-            <h2 className="text-2xl font-bold mb-4 text-center">Your Traits</h2>
+        <main className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <section className="bg-white rounded-2xl shadow-xl p-6">
+            <h2 className="text-2xl font-bold mb-4 text-center">Your Traits (Known to Self)</h2>
             <p className="text-gray-600 mb-4 text-center">
-              Select the traits that best describe you.
+              Select the traits that you believe describe yourself.
             </p>
-            <div className="flex flex-wrap justify-center mb-4">
-              {creatorTraits.length > 0 ? (
-                creatorTraits.map((trait, index) => (
-                  <TraitItem
-                    key={index}
-                    trait={{ ...trait, givenFeedback: false }} // Always false for the creator's view
-                    onClick={() => onTraitClick(trait, 'creator', false)}
-                    isSelectable={true}
-                  />
-                ))
-              ) : (
-                <p className="text-gray-400 italic">Add some traits below!</p>
-              )}
+            <div className="flex flex-wrap justify-center">
+              {creatorTraits.map((trait, index) => (
+                <TraitItem
+                  key={index}
+                  trait={trait}
+                  onClick={() => onTraitClick(trait, 'creator', false)}
+                  isSelectable={true}
+                  isFeedback={false}
+                />
+              ))}
             </div>
             <div className="mt-6 flex items-center space-x-2">
               <input
@@ -306,9 +314,7 @@ const App = () => {
                 value={newTrait}
                 onChange={(e) => setNewTrait(e.target.value)}
                 onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    onAddTrait();
-                  }
+                  if (e.key === 'Enter') onAddTrait();
                 }}
                 placeholder="Add a new trait..."
                 className="flex-1 p-3 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
@@ -323,32 +329,27 @@ const App = () => {
             </div>
           </section>
 
-          {/* Feedback Section */}
-          <section className="bg-white rounded-2xl shadow-xl p-6 lg:col-span-1">
-            <h2 className="text-2xl font-bold mb-4 text-center">Feedback from Others</h2>
+          <section className="bg-white rounded-2xl shadow-xl p-6">
+            <h2 className="text-2xl font-bold mb-4 text-center">Feedback from Others (Known to Others)</h2>
             <p className="text-gray-600 mb-4 text-center">
-              Traits your friends or teammates have selected for you.
+              Click on a trait if you think it describes the other person.
             </p>
             <div className="flex flex-wrap justify-center">
-              {feedbackTraits.length > 0 ? (
-                feedbackTraits.map((trait, index) => (
-                  <TraitItem
-                    key={index}
-                    trait={{ ...trait, isSelfSelected: false }} // Not selectable by self
-                    onClick={() => onTraitClick(trait, 'feedback', true)}
-                    isSelectable={true}
-                  />
-                ))
-              ) : (
-                <p className="text-gray-400 italic">No feedback received yet.</p>
-              )}
+              {feedbackTraits.map((trait, index) => (
+                <TraitItem
+                  key={index}
+                  trait={trait}
+                  onClick={() => onTraitClick(trait, 'feedback', true)}
+                  isSelectable={true}
+                  isFeedback={true}
+                />
+              ))}
             </div>
           </section>
 
-          {/* Johari Window Quadrants */}
-          <section className="bg-gray-100 rounded-2xl shadow-xl p-6 lg:col-span-1 grid grid-cols-1 gap-6">
-            <h2 className="text-2xl font-bold mb-4 text-center">The Johari Window</h2>
-            <div className="grid grid-cols-2 gap-4">
+          <section className="bg-gray-100 rounded-2xl shadow-xl p-6 col-span-1 lg:col-span-2">
+            <h2 className="text-2xl font-bold mb-6 text-center">The Johari Window</h2>
+            <div className="grid grid-cols-2 gap-6">
               <Quadrant title="Open Area" traits={openArea} />
               <Quadrant title="Blind Spot" traits={blindSpot} />
               <Quadrant title="Hidden Area" traits={hiddenArea} />
