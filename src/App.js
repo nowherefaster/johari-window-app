@@ -18,10 +18,8 @@ const auth = getAuth(app);
 // --- State Management with useReducer ---
 // Define the initial state for our Johari Window application
 const initialState = {
-  arena: [],        // Known to self & known to others
-  facade: [],       // Known to self, unknown to others
-  blindSpot: [],    // Unknown to self, known to others
-  unknown: [],      // Unknown to self & unknown to others
+  creatorTraits: [],
+  feedbackTraits: [],
   isLoading: true,
   error: null,
   userId: null,
@@ -33,33 +31,22 @@ function appReducer(state, action) {
     case 'SET_DATA':
       return {
         ...state,
-        arena: action.payload.arena || [],
-        facade: action.payload.facade || [],
-        blindSpot: action.payload.blindSpot || [],
-        unknown: action.payload.unknown || [],
+        creatorTraits: action.payload.creatorTraits || [],
+        feedbackTraits: action.payload.feedbackTraits || [],
         isLoading: false,
         error: null,
       };
-    case 'ADD_TRAIT_TO_QUADRANT':
-      const { trait, quadrant } = action.payload;
+    case 'ADD_TRAIT':
+      const { trait, type } = action.payload;
       return {
         ...state,
-        [quadrant]: [...state[quadrant], trait]
+        [type]: [...state[type], trait],
       };
-    case 'REMOVE_TRAIT_FROM_QUADRANT':
-      const { trait: traitToRemove, quadrant: quadrantToRemove } = action.payload;
+    case 'REMOVE_TRAIT':
+      const { trait: traitToRemove, type: typeToRemove } = action.payload;
       return {
         ...state,
-        [quadrantToRemove]: state[quadrantToRemove].filter(t => t !== traitToRemove)
-      };
-    case 'MOVE_TRAIT':
-      const { trait: traitToMove, from, to } = action.payload;
-      const fromList = state[from].filter(t => t !== traitToMove);
-      const toList = [...state[to], traitToMove];
-      return {
-        ...state,
-        [from]: fromList,
-        [to]: toList,
+        [typeToRemove]: state[typeToRemove].filter(t => t !== traitToRemove),
       };
     case 'SET_USER_ID':
       return {
@@ -86,7 +73,7 @@ function appReducer(state, action) {
 // --- Main App Component ---
 function App() {
   const [state, dispatch] = useReducer(appReducer, initialState);
-  const [newSelfTrait, setNewSelfTrait] = useState('');
+  const [newCreatorTrait, setNewCreatorTrait] = useState('');
   const [newFeedbackTrait, setNewFeedbackTrait] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -117,7 +104,7 @@ function App() {
 
     const startDataListener = (userId) => {
       const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'johari');
-      
+
       const unsub = onSnapshot(
         docRef,
         (docSnapshot) => {
@@ -164,31 +151,53 @@ function App() {
     }
   };
 
-  const addSelfTrait = () => {
-    if (!newSelfTrait.trim()) return;
-    const trait = newSelfTrait.trim();
-    const updatedFacade = [...state.facade, trait];
-    dispatch({ type: 'ADD_TRAIT_TO_QUADRANT', payload: { trait, quadrant: 'facade' }});
-    setNewSelfTrait('');
-    saveToFirestore({ facade: updatedFacade });
+  const handleAddTrait = (trait, type) => {
+    if (!trait.trim()) return;
+    const newTrait = trait.trim();
+    dispatch({ type: 'ADD_TRAIT', payload: { trait: newTrait, type } });
+    if (type === 'creatorTraits') {
+      setNewCreatorTrait('');
+      saveToFirestore({ creatorTraits: [...state.creatorTraits, newTrait] });
+    } else {
+      setNewFeedbackTrait('');
+      saveToFirestore({ feedbackTraits: [...state.feedbackTraits, newTrait] });
+    }
   };
 
-  const addFeedbackTrait = () => {
-    if (!newFeedbackTrait.trim()) return;
-    const trait = newFeedbackTrait.trim();
-    const updatedBlindSpot = [...state.blindSpot, trait];
-    dispatch({ type: 'ADD_TRAIT_TO_QUADRANT', payload: { trait, quadrant: 'blindSpot' }});
-    setNewFeedbackTrait('');
-    saveToFirestore({ blindSpot: updatedBlindSpot });
+  const handleRemoveTrait = (trait, type) => {
+    dispatch({ type: 'REMOVE_TRAIT', payload: { trait, type } });
+    const updatedList = state[type].filter(t => t !== trait);
+    saveToFirestore({ [type]: updatedList });
   };
 
-  const moveTrait = (trait, from, to) => {
-    if (isSaving) return; // Prevent multiple saves
-    const fromList = state[from].filter(t => t !== trait);
-    const toList = [...state[to], trait];
-    dispatch({ type: 'MOVE_TRAIT', payload: { trait, from, to }});
-    saveToFirestore({ [from]: fromList, [to]: toList });
+  const handleMoveToArena = (trait, type) => {
+    // Remove from the current list
+    const updatedFromList = state[type].filter(t => t !== trait);
+
+    // Add to the other list
+    const otherType = type === 'creatorTraits' ? 'feedbackTraits' : 'creatorTraits';
+    const updatedToList = [...state[otherType], trait];
+
+    dispatch({ type: 'SET_DATA', payload: {
+      creatorTraits: type === 'creatorTraits' ? updatedFromList : updatedToList,
+      feedbackTraits: type === 'feedbackTraits' ? updatedFromList : updatedToList,
+    }});
+    
+    saveToFirestore({
+      creatorTraits: type === 'creatorTraits' ? updatedFromList : updatedToList,
+      feedbackTraits: type === 'feedbackTraits' ? updatedFromList : updatedToList,
+    });
   };
+
+  // --- Calculations for Johari Window Quadrants ---
+  const allTraits = new Set([...state.creatorTraits, ...state.feedbackTraits]);
+  const creatorSet = new Set(state.creatorTraits);
+  const feedbackSet = new Set(state.feedbackTraits);
+
+  const arenaTraits = [...creatorSet].filter(t => feedbackSet.has(t));
+  const facadeTraits = [...creatorSet].filter(t => !feedbackSet.has(t));
+  const blindSpotTraits = [...feedbackSet].filter(t => !creatorSet.has(t));
+  const unknownTraits = [...allTraits].filter(t => !creatorSet.has(t) && !feedbackSet.has(t));
 
   // --- UI Rendering ---
   if (state.isLoading) {
@@ -211,7 +220,7 @@ function App() {
     );
   }
 
-  const Quadrant = ({ title, traits, onMove, fromQuadrant }) => (
+  const TraitList = ({ title, traits, type, allowMoveToArena = false }) => (
     <div className="bg-gray-800 rounded-xl p-6 shadow-lg h-full">
       <h2 className="text-xl font-semibold mb-4">{title}</h2>
       <ul className="list-disc list-inside space-y-2">
@@ -219,14 +228,22 @@ function App() {
           traits.map((trait, index) => (
             <li key={index} className="bg-gray-700 p-2 rounded-lg flex items-center justify-between">
               <span>{trait}</span>
-              {onMove && (
+              <div className="flex space-x-2">
+                {allowMoveToArena && (
+                  <button
+                    onClick={() => handleMoveToArena(trait, type)}
+                    className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors duration-200"
+                  >
+                    Move to Arena
+                  </button>
+                )}
                 <button
-                  onClick={() => onMove(trait)}
-                  className="ml-2 px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors duration-200"
+                  onClick={() => handleRemoveTrait(trait, type)}
+                  className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors duration-200"
                 >
-                  Move to {fromQuadrant === 'facade' ? 'Arena' : 'Arena'}
+                  Remove
                 </button>
-              )}
+              </div>
             </li>
           ))
         ) : (
@@ -241,25 +258,25 @@ function App() {
       <div className="max-w-6xl mx-auto">
         <h1 className="text-4xl font-bold mb-8 text-center">Your Johari Window</h1>
         <div className="bg-gray-800 rounded-xl p-6 shadow-lg mb-6">
-          <h2 className="text-xl font-semibold mb-4">Your User ID</h2>
+          <h2 className="text-xl font-semibold mb-2">Your User ID</h2>
           <p className="font-mono text-sm break-all bg-gray-700 p-2 rounded-lg">{state.userId}</p>
         </div>
 
         {/* Input for adding traits */}
         <div className="bg-gray-800 rounded-xl p-6 shadow-lg mb-6 grid md:grid-cols-2 gap-6">
           <div>
-            <h2 className="text-xl font-semibold mb-2">Add a Self-Perceived Trait</h2>
-            <p className="text-sm text-gray-400 mb-4">This is a trait you know about yourself.</p>
+            <h2 className="text-xl font-semibold mb-2">Traits I Believe I Possess</h2>
+            <p className="text-sm text-gray-400 mb-4">Add your self-perceived traits here.</p>
             <div className="flex space-x-4">
               <input
                 type="text"
                 className="flex-grow rounded-lg p-3 bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="e.g., 'Creative'"
-                value={newSelfTrait}
-                onChange={(e) => setNewSelfTrait(e.target.value)}
+                value={newCreatorTrait}
+                onChange={(e) => setNewCreatorTrait(e.target.value)}
               />
               <button
-                onClick={addSelfTrait}
+                onClick={() => handleAddTrait(newCreatorTrait, 'creatorTraits')}
                 className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg shadow-md transition-colors duration-200"
               >
                 Add
@@ -267,8 +284,8 @@ function App() {
             </div>
           </div>
           <div>
-            <h2 className="text-xl font-semibold mb-2">Add a Feedback Trait</h2>
-            <p className="text-sm text-gray-400 mb-4">This is a trait others have told you.</p>
+            <h2 className="text-xl font-semibold mb-2">Feedback from Others</h2>
+            <p className="text-sm text-gray-400 mb-4">Add feedback traits you've received here.</p>
             <div className="flex space-x-4">
               <input
                 type="text"
@@ -278,7 +295,7 @@ function App() {
                 onChange={(e) => setNewFeedbackTrait(e.target.value)}
               />
               <button
-                onClick={addFeedbackTrait}
+                onClick={() => handleAddTrait(newFeedbackTrait, 'feedbackTraits')}
                 className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md transition-colors duration-200"
               >
                 Add
@@ -289,30 +306,78 @@ function App() {
 
         {/* The Johari Window Grid */}
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Quadrant 1: Arena */}
-          <Quadrant
-            title="Arena (Known to Self, Known to Others)"
-            traits={state.arena}
+          {/* Section 1: Known to Self */}
+          <TraitList
+            title="Traits I Believe I Possess"
+            traits={state.creatorTraits}
+            type="creatorTraits"
+            allowMoveToArena={false} // Arena calculation is handled automatically
           />
-          {/* Quadrant 2: Blind Spot */}
-          <Quadrant
-            title="Blind Spot (Unknown to Self, Known to Others)"
-            traits={state.blindSpot}
-            onMove={(trait) => moveTrait(trait, 'blindSpot', 'arena')}
-            fromQuadrant="blindSpot"
+          {/* Section 2: Known to Others */}
+          <TraitList
+            title="Feedback from Others"
+            traits={state.feedbackTraits}
+            type="feedbackTraits"
+            allowMoveToArena={false} // Arena calculation is handled automatically
           />
-          {/* Quadrant 3: Facade */}
-          <Quadrant
-            title="Facade (Known to Self, Unknown to Others)"
-            traits={state.facade}
-            onMove={(trait) => moveTrait(trait, 'facade', 'arena')}
-            fromQuadrant="facade"
-          />
-          {/* Quadrant 4: Unknown */}
-          <Quadrant
-            title="Unknown (Unknown to Self, Unknown to Others)"
-            traits={state.unknown}
-          />
+        </div>
+
+        <div className="mt-8">
+          <h2 className="text-3xl font-bold mb-4 text-center">Your Johari Window Quadrants</h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Quadrant 1: Arena */}
+            <div className="bg-gray-800 rounded-xl p-6 shadow-lg h-full">
+              <h3 className="text-xl font-semibold mb-4 text-green-400">Arena (Known to Self, Known to Others)</h3>
+              <ul className="list-disc list-inside space-y-2">
+                {arenaTraits.length > 0 ? (
+                  arenaTraits.map((trait, index) => (
+                    <li key={index} className="bg-gray-700 p-2 rounded-lg">{trait}</li>
+                  ))
+                ) : (
+                  <p className="text-gray-400 text-sm">No shared traits yet.</p>
+                )}
+              </ul>
+            </div>
+            {/* Quadrant 2: Facade */}
+            <div className="bg-gray-800 rounded-xl p-6 shadow-lg h-full">
+              <h3 className="text-xl font-semibold mb-4 text-blue-400">Facade (Known to Self, Unknown to Others)</h3>
+              <ul className="list-disc list-inside space-y-2">
+                {facadeTraits.length > 0 ? (
+                  facadeTraits.map((trait, index) => (
+                    <li key={index} className="bg-gray-700 p-2 rounded-lg">{trait}</li>
+                  ))
+                ) : (
+                  <p className="text-gray-400 text-sm">No private traits yet.</p>
+                )}
+              </ul>
+            </div>
+            {/* Quadrant 3: Blind Spot */}
+            <div className="bg-gray-800 rounded-xl p-6 shadow-lg h-full">
+              <h3 className="text-xl font-semibold mb-4 text-yellow-400">Blind Spot (Unknown to Self, Known to Others)</h3>
+              <ul className="list-disc list-inside space-y-2">
+                {blindSpotTraits.length > 0 ? (
+                  blindSpotTraits.map((trait, index) => (
+                    <li key={index} className="bg-gray-700 p-2 rounded-lg">{trait}</li>
+                  ))
+                ) : (
+                  <p className="text-gray-400 text-sm">No blind spots yet.</p>
+                )}
+              </ul>
+            </div>
+            {/* Quadrant 4: Unknown */}
+            <div className="bg-gray-800 rounded-xl p-6 shadow-lg h-full">
+              <h3 className="text-xl font-semibold mb-4 text-red-400">Unknown (Unknown to Self, Unknown to Others)</h3>
+              <ul className="list-disc list-inside space-y-2">
+                {unknownTraits.length > 0 ? (
+                  unknownTraits.map((trait, index) => (
+                    <li key={index} className="bg-gray-700 p-2 rounded-lg">{trait}</li>
+                  ))
+                ) : (
+                  <p className="text-gray-400 text-sm">No unknown traits yet.</p>
+                )}
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
     </div>
