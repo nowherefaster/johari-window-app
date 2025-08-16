@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext } from 'react';
+import React, { useState, useEffect, createContext, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, collection, addDoc, updateDoc, getDoc, query, where, getDocs } from 'firebase/firestore';
@@ -46,6 +46,34 @@ const adjectives = [
   "Self-Assertive", "Self-Conscious", "Sensible", "Sentimental", "Shy", "Silly", "Spontaneous", "Sympathetic", "Tense",
   "Trustworthy", "Warm", "Wise", "Witty"
 ];
+
+// Reusable custom hook to manage adjective selection logic
+const useAdjectiveSelector = (initialSelections = []) => {
+    const [selectedAdjectives, setSelectedAdjectives] = useState(initialSelections);
+    const MAX_SELECTIONS = 5;
+
+    // Use useCallback to memoize the toggle function
+    const toggleAdjective = useCallback((adj) => {
+        const isSelected = selectedAdjectives.includes(adj);
+
+        if (isSelected) {
+            setSelectedAdjectives(prev => prev.filter(a => a !== adj));
+        } else {
+            if (selectedAdjectives.length < MAX_SELECTIONS) {
+                setSelectedAdjectives(prev => [...prev, adj]);
+            }
+            // Note: Snackbar message logic is handled in the component calling this hook.
+        }
+    }, [selectedAdjectives]);
+
+    // Function to programmatically set the initial selections, useful for async data fetching
+    const setInitialAdjectives = useCallback((newSelections) => {
+        setSelectedAdjectives(newSelections);
+    }, []);
+
+    return { selectedAdjectives, toggleAdjective, setInitialAdjectives, MAX_SELECTIONS };
+};
+
 
 // Helper component for the floating help button
 const HelpButton = ({ onClick }) => (
@@ -171,10 +199,9 @@ const WelcomePage = ({ setAppState, creatorName, setCreatorName, isAppReady }) =
 
 // Component for the second step: adjective selection (now also handles editing)
 const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, userId, setDebugInfo, windowData, windowId, setSnackbarMessage }) => {
-  const [selectedAdjectives, setSelectedAdjectives] = useState(windowData?.selfSelections || []);
+  const { selectedAdjectives, toggleAdjective, MAX_SELECTIONS } = useAdjectiveSelector(windowData?.selfSelections);
   const firebaseContext = React.useContext(FirebaseContext);
   const db = firebaseContext.db;
-  const MAX_SELECTIONS = 5;
 
   const handleSaveSelections = async () => {
     if (selectedAdjectives.length === 0) {
@@ -209,23 +236,15 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
     }
   };
 
-  const toggleAdjective = (adj) => {
+  const handleToggleAdjective = (adj) => {
     const isSelected = selectedAdjectives.includes(adj);
-    
-    if (isSelected) {
-      const newSelections = selectedAdjectives.filter(a => a !== adj);
-      setSelectedAdjectives(newSelections);
-      setSnackbarMessage(null);
+    toggleAdjective(adj);
+    if (!isSelected && selectedAdjectives.length >= MAX_SELECTIONS) {
+      setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
     } else {
-      if (selectedAdjectives.length >= MAX_SELECTIONS) {
-        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-        return;
-      }
-      const newSelections = [...selectedAdjectives, adj];
-      setSelectedAdjectives(newSelections);
       setSnackbarMessage(null);
     }
-  };
+  }
 
   return (
     <>
@@ -247,7 +266,7 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
             <button
               key={adj}
               className={buttonClassName}
-              onClick={() => toggleAdjective(adj)}
+              onClick={() => handleToggleAdjective(adj)}
             >
               {adj}
             </button>
@@ -267,11 +286,10 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
 
 // Component for giving feedback
 const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appId, userId, setDebugInfo, setSnackbarMessage }) => {
-  const [selectedAdjectives, setSelectedAdjectives] = useState([]);
+  const { selectedAdjectives, toggleAdjective, setInitialAdjectives, MAX_SELECTIONS } = useAdjectiveSelector();
   const [feedbackDocId, setFeedbackDocId] = useState(null);
   const firebaseContext = React.useContext(FirebaseContext);
   const db = firebaseContext.db;
-  const MAX_SELECTIONS = 5;
 
   useEffect(() => {
     if (!db || !windowId || !userId) return;
@@ -285,7 +303,7 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
         if (!querySnapshot.empty) {
           const doc = querySnapshot.docs[0];
           setFeedbackDocId(doc.id);
-          setSelectedAdjectives(doc.data().selections);
+          setInitialAdjectives(doc.data().selections); // Set initial state from fetched data
           setDebugInfo(prev => ({...prev, message: `Existing feedback found and loaded for userId: ${userId}`}));
         } else {
           setDebugInfo(prev => ({...prev, message: `No existing feedback found for userId: ${userId}`}));
@@ -297,25 +315,17 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
     };
 
     fetchExistingFeedback();
-  }, [db, windowId, userId, appId, setDebugInfo]);
+  }, [db, windowId, userId, appId, setDebugInfo, setInitialAdjectives]);
 
-  const toggleAdjective = (adj) => {
+  const handleToggleAdjective = (adj) => {
     const isSelected = selectedAdjectives.includes(adj);
-    
-    if (isSelected) {
-      const newSelections = selectedAdjectives.filter(a => a !== adj);
-      setSelectedAdjectives(newSelections);
-      setSnackbarMessage(null);
+    toggleAdjective(adj);
+    if (!isSelected && selectedAdjectives.length >= MAX_SELECTIONS) {
+      setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
     } else {
-      if (selectedAdjectives.length >= MAX_SELECTIONS) {
-        setSnackbarMessage({ type: 'error', message: `You can only select a maximum of ${MAX_SELECTIONS} adjectives.` });
-        return;
-      }
-      const newSelections = [...selectedAdjectives, adj];
-      setSelectedAdjectives(newSelections);
       setSnackbarMessage(null);
     }
-  };
+  }
 
   const handleSubmitFeedback = async () => {
     if (selectedAdjectives.length === 0) {
@@ -367,7 +377,7 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
             <button
               key={adj}
               className={buttonClassName}
-              onClick={() => toggleAdjective(adj)}
+              onClick={() => handleToggleAdjective(adj)}
             >
               {adj}
             </button>
