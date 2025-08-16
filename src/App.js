@@ -50,6 +50,7 @@ function appReducer(state, action) {
       return {
         ...state,
         userId: action.payload,
+        isLoading: false, // Set loading to false once the userId is confirmed.
       };
     case 'SET_LOADING':
       return {
@@ -76,11 +77,18 @@ function App() {
 
   // Effect for Firebase authentication and data listener
   useEffect(() => {
-    // onAuthStateChanged is the most reliable way to handle auth state changes
+    let unsubscribeSnapshot = () => {};
+
+    // Use onAuthStateChanged as the single source of truth for the auth state.
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+      // Set loading to true while we're handling the auth state.
+      dispatch({ type: 'SET_LOADING', payload: true });
+
       if (user) {
         // User is signed in. Set the user ID and listen for data.
         dispatch({ type: 'SET_USER_ID', payload: user.uid });
+        // Clean up any existing listener before creating a new one.
+        unsubscribeSnapshot();
         startDataListener(user.uid);
       } else {
         // No user is signed in. Attempt to sign in.
@@ -101,7 +109,7 @@ function App() {
       const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', 'johari');
       
       // Set up a real-time listener for the document
-      const unsubscribeSnapshot = onSnapshot(
+      unsubscribeSnapshot = onSnapshot(
         docRef,
         (docSnapshot) => {
           if (docSnapshot.exists()) {
@@ -126,14 +134,12 @@ function App() {
           dispatch({ type: 'SET_ERROR', payload: 'Failed to load Johari data.' });
         }
       );
-
-      // Return the unsubscribe function for cleanup
-      return unsubscribeSnapshot;
     };
 
     return () => {
-      // Clean up the auth state listener
+      // Clean up both listeners on component unmount
       unsubscribeAuth();
+      unsubscribeSnapshot();
     };
   }, []);
 
