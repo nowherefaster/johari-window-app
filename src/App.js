@@ -212,13 +212,13 @@ const Creator = ({ setAppState, setWindowId, creatorName, isAppReady, appId, use
     try {
       if (windowId) {
         // Update existing document
-        const docRef = doc(db, `artifacts/${appId}/public/data/windows`, windowId);
+        const docRef = doc(db, `public/data/windows`, windowId);
         await updateDoc(docRef, { selfSelections: selectedAdjectives });
         setAppState('windowCreated');
         setDebugInfo(prev => ({...prev, message: "Successfully updated window in Firestore.", docId: windowId}));
       } else {
         // Create new document
-        const windowsCollection = collection(db, `artifacts/${appId}/public/data/windows`);
+        const windowsCollection = collection(db, `public/data/windows`);
         const docRef = await addDoc(windowsCollection, {
           creatorName: creatorName,
           selfSelections: selectedAdjectives,
@@ -296,7 +296,7 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
 
     const fetchExistingFeedback = async () => {
       try {
-        const feedbackCollectionRef = collection(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`);
+        const feedbackCollectionRef = collection(db, `public/data/windows/${windowId}/feedback`);
         const q = query(feedbackCollectionRef, where("creatorId", "==", userId));
         const querySnapshot = await getDocs(q);
 
@@ -334,11 +334,11 @@ const FeedbackProvider = ({ windowId, creatorName, setAppState, isAppReady, appI
     }
 
     try {
-      const feedbackCollection = collection(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`);
+      const feedbackCollection = collection(db, `public/data/windows/${windowId}/feedback`);
 
       if (feedbackDocId) {
         // Update existing document
-        const docRef = doc(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`, feedbackDocId);
+        const docRef = doc(db, `public/data/windows/${windowId}/feedback`, feedbackDocId);
         await updateDoc(docRef, { selections: selectedAdjectives });
         setDebugInfo(prev => ({...prev, message: `Successfully updated feedback document ID: ${feedbackDocId}`}));
       } else {
@@ -708,7 +708,7 @@ useEffect(() => {
 
   const fetchAdminUids = async () => {
       try {
-          const adminsRef = collection(db, `artifacts/${appId}/public/data/admins`);
+          const adminsRef = collection(db, `public/data/admins`);
           const q = query(adminsRef);
           const querySnapshot = await getDocs(q);
           const uids = querySnapshot.docs.map(doc => doc.id);
@@ -733,7 +733,7 @@ useEffect(() => {
 
     setDebugInfo(prev => ({...prev, message: "onSnapshot listener for window started."}));
 
-    const unsubWindow = onSnapshot(doc(db, `artifacts/${appId}/public/data/windows`, windowId), (docSnap) => {
+    const unsubWindow = onSnapshot(doc(db, `public/data/windows`, windowId), (docSnap) => {
       setDebugInfo(prev => ({...prev, message: "onSnapshot callback fired for main window.", docExists: docSnap.exists()}));
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -756,7 +756,7 @@ useEffect(() => {
       }
     });
 
-    const unsubFeedback = onSnapshot(collection(db, `artifacts/${appId}/public/data/windows/${windowId}/feedback`), (querySnapshot) => {
+    const unsubFeedback = onSnapshot(collection(db, `public/data/windows/${windowId}/feedback`), (querySnapshot) => {
       const feedbackDocs = [];
       querySnapshot.forEach(doc => {
         feedbackDocs.push(doc.data());
@@ -778,11 +778,11 @@ useEffect(() => {
 
     setDebugInfo(prev => ({...prev, message: "Admin onSnapshot listener for all windows started."}));
 
-    const unsubAllWindows = onSnapshot(collection(db, `artifacts/${appId}/public/data/windows`), async (querySnapshot) => {
+    const unsubAllWindows = onSnapshot(collection(db, `public/data/windows`), async (querySnapshot) => {
       setDebugInfo(prev => ({...prev, message: "Admin onSnapshot callback fired for all windows."}));
       const windows = [];
       for (const docSnap of querySnapshot.docs) {
-        const feedbackCollectionRef = collection(db, `artifacts/${appId}/public/data/windows/${docSnap.id}/feedback`);
+        const feedbackCollectionRef = collection(db, `public/data/windows/${docSnap.id}/feedback`);
         const feedbackDocs = await getDocs(feedbackCollectionRef);
         const responsesCount = feedbackDocs.docs.length;
         windows.push({
@@ -805,11 +805,6 @@ useEffect(() => {
 
 
   const renderContent = () => {
-    // Show a loading screen if the app is not ready
-    if (!isAppReady) {
-      return <LoadingScreen />;
-    }
-
     if (appError) {
       return (
         <div className={tailwindClasses.card}>
@@ -819,6 +814,11 @@ useEffect(() => {
           </p>
         </div>
       );
+    }
+
+    // Show a loading screen if the app is not ready
+    if (!isAppReady) {
+      return <LoadingScreen />;
     }
 
     if (isAdmin && appState === 'home') {

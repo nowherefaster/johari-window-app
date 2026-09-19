@@ -1,0 +1,7 @@
+allowBuilds:
+  core-js: true
+  core-js-pure: true
+  esbuild: true
+  protobufjs: true
+  re2: true
+  re2,protobufjs: true
